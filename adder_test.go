@@ -207,6 +207,39 @@ db:
 	assert.Equal(t, "tenant_alpha", cfg.Db.Schema)
 }
 
+func TestCaseInsensitiveYAMLKeys(t *testing.T) {
+	type config struct {
+		BaseURL string
+	}
+
+	tests := []struct {
+		name    string
+		yamlKey string
+	}{
+		{"lowercase", "baseurl"},
+		{"camelCase", "baseUrl"},
+		{"original", "baseURL"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			content := tc.yamlKey + ": https://example.com\n"
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "application.yaml"), []byte(content), 0o644))
+
+			a := New()
+			a.SetConfigName("application")
+			a.SetConfigType("yaml")
+			a.AddConfigPath(dir)
+			require.NoError(t, a.ReadInConfig())
+
+			var cfg config
+			require.NoError(t, a.Unmarshal(&cfg))
+			assert.Equal(t, "https://example.com", cfg.BaseURL)
+		})
+	}
+}
+
 func TestUnmarshalStringArrayFromYAML(t *testing.T) {
 	type appConfig struct {
 		AllowedOrigins []string `mapstructure:"allowed_origins"`

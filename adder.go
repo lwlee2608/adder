@@ -138,6 +138,7 @@ func (a *Adder) ReadInConfig() error {
 		if err := yaml.Unmarshal(data, &a.configValues); err != nil {
 			return fmt.Errorf("failed to parse yaml: %w", err)
 		}
+		insensitiviseMap(a.configValues)
 	default:
 		return fmt.Errorf("unsupported config type: %s", a.configType)
 	}
@@ -302,6 +303,20 @@ func setFieldFromString(field reflect.Value, value string) error {
 		field.SetBool(value == "true" || value == "1")
 	}
 	return nil
+}
+
+func insensitiviseMap(m map[string]any) {
+	for key, val := range m {
+		switch v := val.(type) {
+		case map[string]any:
+			insensitiviseMap(v)
+		}
+		lower := strings.ToLower(key)
+		if key != lower {
+			delete(m, key)
+			m[lower] = val
+		}
+	}
 }
 
 func setSliceField(field reflect.Value, value any) error {
