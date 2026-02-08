@@ -1,0 +1,7 @@
+log:
+  level: info
+http:
+  port: 8080
+db:
+  url: "postgres://localhost:5432/mydb"
+  schema: "public"
