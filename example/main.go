@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -8,7 +10,9 @@ import (
 )
 
 type Config struct {
-	Log LogConfig
+	Log  LogConfig
+	Http HttpConfig
+	Db   DbConfig
 }
 
 const (
@@ -21,6 +25,13 @@ const (
 type LogConfig struct {
 	Level string
 }
+type HttpConfig struct {
+	Port uint
+}
+type DbConfig struct {
+	Url    string
+	Schema string
+}
 
 func main() {
 	_ = godotenv.Load()
@@ -30,4 +41,22 @@ func main() {
 	adder.SetConfigType("yaml")
 	adder.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	adder.AutomaticEnv()
+
+	if err := adder.ReadInConfig(); err != nil {
+		panic(err)
+	}
+
+	var config Config
+
+	if err := adder.Unmarshal(&config); err != nil {
+		panic(err)
+	}
+
+	configJSON, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Config loaded:")
+	fmt.Println(string(configJSON))
 }
