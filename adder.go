@@ -109,6 +109,8 @@ func (a *Adder) BindEnv(key string, envVar string) error {
 func ReadInConfig() error { return defaultAdder.ReadInConfig() }
 
 // ReadInConfig searches the configured paths for the config file and loads it.
+// All YAML keys are lowercased after parsing, so keys like "baseURL", "baseUrl",
+// and "baseurl" all match the same struct field.
 // [Adder.SetConfigName], [Adder.SetConfigType], and [Adder.AddConfigPath] must be called before this.
 func (a *Adder) ReadInConfig() error {
 	if a.configName == "" {

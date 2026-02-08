@@ -43,6 +43,7 @@ if err := adder.Unmarshal(&config); err != nil {
 
 ## Features
 
+- Case-insensitive YAML key matching
 - YAML configuration with multiple search paths
 - Automatic environment variable overrides via `AutomaticEnv()`
 - Explicit env var binding via `BindEnv()`
