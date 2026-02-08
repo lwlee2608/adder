@@ -11,8 +11,13 @@ import (
 )
 
 type testConfig struct {
+	Log  testLogConfig
 	Http testHTTPConfig
 	Db   testDBConfig
+}
+
+type testLogConfig struct {
+	Level string
 }
 
 type testHTTPConfig struct {
@@ -20,13 +25,16 @@ type testHTTPConfig struct {
 }
 
 type testDBConfig struct {
-	URL string `mapstructure:"url"`
+	URL    string `mapstructure:"url"`
+	Schema string
 }
 
 func TestUnmarshalUintFromYAML(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "application.yaml")
-	content := "http:\n  port: 8080\n"
+	content := `http:
+  port: 8080
+`
 
 	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -47,7 +55,9 @@ func TestUnmarshalUintFromYAML(t *testing.T) {
 func TestAutomaticEnvOverrideUint(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "application.yaml")
-	content := "http:\n  port: 8080\n"
+	content := `http:
+  port: 8080
+`
 
 	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -72,7 +82,9 @@ func TestAutomaticEnvOverrideUint(t *testing.T) {
 func TestBindEnvOverride(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "application.yaml")
-	content := "db:\n  url: postgres://from-config\n"
+	content := `db:
+  url: postgres://from-config
+`
 
 	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -119,7 +131,8 @@ func TestReadInConfigErrors(t *testing.T) {
 	t.Run("unsupported config type", func(t *testing.T) {
 		dir := t.TempDir()
 		configPath := filepath.Join(dir, "application.toml")
-		if err := os.WriteFile(configPath, []byte("key = \"value\"\n"), 0o644); err != nil {
+		if err := os.WriteFile(configPath, []byte(`key = "value"
+`), 0o644); err != nil {
 			t.Fatalf("write config: %v", err)
 		}
 
@@ -137,7 +150,9 @@ func TestReadInConfigErrors(t *testing.T) {
 func TestAutomaticEnvOverrideUint_InvalidValue(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "application.yaml")
-	content := "http:\n  port: 8080\n"
+	content := `http:
+  port: 8080
+`
 
 	require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
 	t.Setenv("HTTP_PORT", "not-a-number")
@@ -155,4 +170,39 @@ func TestAutomaticEnvOverrideUint_InvalidValue(t *testing.T) {
 	err := a.Unmarshal(&cfg)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid syntax")
+}
+
+func TestAutomaticEnvOverrideFromYAMLDefaults(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "application.yaml")
+	content := `log:
+  level: info
+http:
+  port: 8080
+db:
+  url: postgres://from-config
+  schema: public
+`
+
+	require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+	t.Setenv("LOG_LEVEL", "debug")
+	t.Setenv("HTTP_PORT", "9091")
+	t.Setenv("DB_SCHEMA", "tenant_alpha")
+
+	a := New()
+	a.SetConfigName("application")
+	a.SetConfigType("yaml")
+	a.AddConfigPath(dir)
+	a.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	a.AutomaticEnv()
+
+	require.NoError(t, a.ReadInConfig())
+
+	var cfg testConfig
+	require.NoError(t, a.Unmarshal(&cfg))
+
+	assert.Equal(t, "debug", cfg.Log.Level)
+	assert.Equal(t, uint(9091), cfg.Http.Port)
+	assert.Equal(t, "postgres://from-config", cfg.Db.URL)
+	assert.Equal(t, "tenant_alpha", cfg.Db.Schema)
 }
