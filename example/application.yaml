@@ -5,3 +5,7 @@ http:
 db:
   url: "postgres://postgres:postgres@localhost:5432/postgres"
   schema: "public"
+app:
+  allowed_origins:
+    - "https://app.local"
+    - "https://admin.local"

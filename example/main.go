@@ -13,6 +13,7 @@ type Config struct {
 	Log  LogConfig
 	Http HttpConfig
 	Db   DbConfig
+	App  AppConfig
 }
 
 const (
@@ -31,6 +32,10 @@ type HttpConfig struct {
 type DbConfig struct {
 	Url    string
 	Schema string
+}
+
+type AppConfig struct {
+	AllowedOrigins []string `mapstructure:"allowed_origins"`
 }
 
 func main() {

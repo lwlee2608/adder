@@ -206,3 +206,34 @@ db:
 	assert.Equal(t, "postgres://from-config", cfg.Db.URL)
 	assert.Equal(t, "tenant_alpha", cfg.Db.Schema)
 }
+
+func TestUnmarshalStringArrayFromYAML(t *testing.T) {
+	type appConfig struct {
+		AllowedOrigins []string `mapstructure:"allowed_origins"`
+	}
+
+	type config struct {
+		App appConfig
+	}
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "application.yaml")
+	content := `app:
+  allowed_origins:
+    - https://app.local
+    - https://admin.local
+`
+
+	require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+
+	a := New()
+	a.SetConfigName("application")
+	a.SetConfigType("yaml")
+	a.AddConfigPath(dir)
+
+	require.NoError(t, a.ReadInConfig())
+
+	var cfg config
+	require.NoError(t, a.Unmarshal(&cfg))
+	assert.Equal(t, []string{"https://app.local", "https://admin.local"}, cfg.App.AllowedOrigins)
+}
