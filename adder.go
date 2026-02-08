@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -198,6 +199,25 @@ func (a *Adder) setFieldValue(field reflect.Value, value any, keyPath string) er
 		case float64:
 			field.SetInt(int64(v))
 		}
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		switch v := value.(type) {
+		case int:
+			if v >= 0 {
+				field.SetUint(uint64(v))
+			}
+		case int64:
+			if v >= 0 {
+				field.SetUint(uint64(v))
+			}
+		case uint:
+			field.SetUint(uint64(v))
+		case uint64:
+			field.SetUint(v)
+		case float64:
+			if v >= 0 {
+				field.SetUint(uint64(v))
+			}
+		}
 	case reflect.Bool:
 		if b, ok := value.(bool); ok {
 			field.SetBool(b)
@@ -214,9 +234,17 @@ func setFieldFromString(field reflect.Value, value string) error {
 	case reflect.String:
 		field.SetString(value)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		var i int64
-		fmt.Sscanf(value, "%d", &i)
+		i, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return err
+		}
 		field.SetInt(i)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		u, err := strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			return err
+		}
+		field.SetUint(u)
 	case reflect.Bool:
 		field.SetBool(value == "true" || value == "1")
 	}
