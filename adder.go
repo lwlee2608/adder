@@ -1,3 +1,17 @@
+// Package adder provides a lightweight configuration library for Go. It reads
+// YAML config files into Go structs with support for environment variable overrides.
+//
+// Use the package-level functions with the default instance for simple cases:
+//
+//	adder.SetConfigName("application")
+//	adder.SetConfigType("yaml")
+//	adder.AddConfigPath(".")
+//	adder.ReadInConfig()
+//
+//	var cfg Config
+//	adder.Unmarshal(&cfg)
+//
+// Or create separate instances with [New] for independent configurations.
 package adder
 
 import (
@@ -11,6 +25,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Adder manages configuration loaded from YAML files with optional environment
+// variable overrides. Use [New] to create an instance, or use the package-level
+// functions which operate on a default instance.
 type Adder struct {
 	configName   string
 	configType   string
@@ -21,6 +38,7 @@ type Adder struct {
 	configValues map[string]any
 }
 
+// New returns a new Adder instance with empty configuration.
 func New() *Adder {
 	return &Adder{
 		configPaths:  []string{},
@@ -31,38 +49,67 @@ func New() *Adder {
 
 var defaultAdder = New()
 
+// SetConfigName calls [Adder.SetConfigName] on the default instance.
 func SetConfigName(name string) { defaultAdder.SetConfigName(name) }
+
+// SetConfigName sets the config filename without extension (e.g. "application").
 func (a *Adder) SetConfigName(name string) {
 	a.configName = name
 }
 
+// SetConfigType calls [Adder.SetConfigType] on the default instance.
 func SetConfigType(typ string) { defaultAdder.SetConfigType(typ) }
+
+// SetConfigType sets the config file format. Supported values: "yaml", "yml".
 func (a *Adder) SetConfigType(typ string) {
 	a.configType = typ
 }
 
+// AddConfigPath calls [Adder.AddConfigPath] on the default instance.
 func AddConfigPath(path string) { defaultAdder.AddConfigPath(path) }
+
+// AddConfigPath adds a directory to the list of paths to search for the config file.
+// Paths are searched in the order they are added.
 func (a *Adder) AddConfigPath(path string) {
 	a.configPaths = append(a.configPaths, path)
 }
 
+// SetEnvKeyReplacer calls [Adder.SetEnvKeyReplacer] on the default instance.
 func SetEnvKeyReplacer(r *strings.Replacer) { defaultAdder.SetEnvKeyReplacer(r) }
+
+// SetEnvKeyReplacer sets a [strings.Replacer] for mapping config keys to environment
+// variable names. For example, strings.NewReplacer(".", "_") maps "http.port" to "HTTP_PORT".
 func (a *Adder) SetEnvKeyReplacer(r *strings.Replacer) {
 	a.envReplacer = r
 }
 
+// AutomaticEnv calls [Adder.AutomaticEnv] on the default instance.
 func AutomaticEnv() { defaultAdder.AutomaticEnv() }
+
+// AutomaticEnv enables automatic environment variable overrides. When enabled,
+// [Adder.Unmarshal] checks for an environment variable for each config key before
+// using the value from the config file. Use [Adder.SetEnvKeyReplacer] to control how
+// config keys are mapped to environment variable names.
 func (a *Adder) AutomaticEnv() {
 	a.autoEnv = true
 }
 
+// BindEnv calls [Adder.BindEnv] on the default instance.
 func BindEnv(key string, envVar string) error { return defaultAdder.BindEnv(key, envVar) }
+
+// BindEnv explicitly binds a config key to a specific environment variable.
+// The key uses dot notation for nested fields (e.g. "db.url").
+// Explicit bindings take precedence over [Adder.AutomaticEnv].
 func (a *Adder) BindEnv(key string, envVar string) error {
 	a.envBindings[strings.ToLower(key)] = envVar
 	return nil
 }
 
+// ReadInConfig calls [Adder.ReadInConfig] on the default instance.
 func ReadInConfig() error { return defaultAdder.ReadInConfig() }
+
+// ReadInConfig searches the configured paths for the config file and loads it.
+// [Adder.SetConfigName], [Adder.SetConfigType], and [Adder.AddConfigPath] must be called before this.
 func (a *Adder) ReadInConfig() error {
 	if a.configName == "" {
 		return fmt.Errorf("config name not set")
@@ -98,7 +145,13 @@ func (a *Adder) ReadInConfig() error {
 	return nil
 }
 
+// Unmarshal calls [Adder.Unmarshal] on the default instance.
 func Unmarshal(v any) error { return defaultAdder.Unmarshal(v) }
+
+// Unmarshal decodes the loaded configuration into a struct. The target must be
+// a non-nil pointer to a struct. Fields are matched by lowercase name or by
+// the "mapstructure" struct tag. Environment variable overrides are applied
+// during unmarshalling.
 func (a *Adder) Unmarshal(v any) error {
 	return a.unmarshalWithPath(a.configValues, v, "")
 }
