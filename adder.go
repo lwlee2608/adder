@@ -62,7 +62,7 @@ func SetConfigType(typ string) { defaultAdder.SetConfigType(typ) }
 
 // SetConfigType sets the config file format. Supported values: "yaml", "yml".
 func (a *Adder) SetConfigType(typ string) {
-	a.configType = typ
+	a.configType = strings.ToLower(typ)
 }
 
 // AddConfigPath calls [Adder.AddConfigPath] on the default instance.
@@ -119,9 +119,14 @@ func (a *Adder) ReadInConfig() error {
 
 	var configFile string
 	for _, path := range a.configPaths {
-		candidate := filepath.Join(path, a.configName+"."+a.configType)
-		if _, err := os.Stat(candidate); err == nil {
-			configFile = candidate
+		for _, ext := range configExtensions(a.configType) {
+			candidate := filepath.Join(path, a.configName+"."+ext)
+			if _, err := os.Stat(candidate); err == nil {
+				configFile = candidate
+				break
+			}
+		}
+		if configFile != "" {
 			break
 		}
 	}
@@ -349,4 +354,13 @@ func setSliceField(field reflect.Value, value any) error {
 
 	field.Set(newSlice)
 	return nil
+}
+
+func configExtensions(configType string) []string {
+	switch configType {
+	case "yaml", "yml":
+		return []string{"yaml", "yml"}
+	default:
+		return []string{configType}
+	}
 }

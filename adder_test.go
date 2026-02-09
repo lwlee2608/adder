@@ -52,6 +52,27 @@ func TestUnmarshalUintFromYAML(t *testing.T) {
 	assert.Equal(t, uint(8080), cfg.Http.Port)
 }
 
+func TestReadInConfig_WithYamlTypeFindsYmlFile(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "application.yml")
+	content := `http:
+  port: 8080
+`
+
+	require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+
+	a := New()
+	a.SetConfigName("application")
+	a.SetConfigType("Yaml")
+	a.AddConfigPath(dir)
+
+	require.NoError(t, a.ReadInConfig())
+
+	var cfg testConfig
+	require.NoError(t, a.Unmarshal(&cfg))
+	assert.Equal(t, uint(8080), cfg.Http.Port)
+}
+
 func TestAutomaticEnvOverrideUint(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "application.yaml")
