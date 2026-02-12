@@ -127,6 +127,37 @@ func TestBindEnvOverride(t *testing.T) {
 	assert.Equal(t, "postgres://from-env", cfg.Db.URL)
 }
 
+func TestBindEnvOverride_MissingSectionInYAML(t *testing.T) {
+	type apiConfig struct {
+		ApiKey string
+	}
+	type config struct {
+		Api apiConfig
+	}
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "application.yaml")
+	// No "api:" section in the YAML at all
+	content := `log:
+  level: info
+`
+
+	require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+	t.Setenv("MY_API_KEY", "secret-key-from-env")
+
+	a := New()
+	a.SetConfigName("application")
+	a.SetConfigType("yaml")
+	a.AddConfigPath(dir)
+
+	require.NoError(t, a.BindEnv("api.apikey", "MY_API_KEY"))
+	require.NoError(t, a.ReadInConfig())
+
+	var cfg config
+	require.NoError(t, a.Unmarshal(&cfg))
+	assert.Equal(t, "secret-key-from-env", cfg.Api.ApiKey)
+}
+
 func TestReadInConfigErrors(t *testing.T) {
 	t.Run("missing config name", func(t *testing.T) {
 		a := New()
