@@ -206,6 +206,12 @@ func (a *Adder) unmarshalWithPath(data map[string]any, v any, prefix string) err
 		// Get value from config
 		configVal, exists := data[fieldName]
 		if !exists {
+			// Still recurse into struct fields to check env bindings
+			if fieldValue.Kind() == reflect.Struct {
+				if err := a.unmarshalWithPath(map[string]any{}, fieldValue.Addr().Interface(), fullKey); err != nil {
+					return err
+				}
+			}
 			continue
 		}
 
