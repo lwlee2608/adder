@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -140,8 +141,8 @@ func (a *Adder) ReadInConfig() error {
 		return fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	// Expand environment variables (e.g. ${VAR} or $VAR) in the raw config
-	data = []byte(os.ExpandEnv(string(data)))
+	// Expand ${VAR} references in the raw config (bare $VAR is intentionally not expanded)
+	data = []byte(expandEnvBraceOnly(string(data)))
 
 	switch a.configType {
 	case "yaml", "yml":
@@ -154,6 +155,14 @@ func (a *Adder) ReadInConfig() error {
 	}
 
 	return nil
+}
+
+var envBraceRe = regexp.MustCompile(`\$\{([^}]+)\}`)
+
+func expandEnvBraceOnly(s string) string {
+	return envBraceRe.ReplaceAllStringFunc(s, func(match string) string {
+		return os.Getenv(match[2 : len(match)-1])
+	})
 }
 
 // Unmarshal calls [Adder.Unmarshal] on the default instance.

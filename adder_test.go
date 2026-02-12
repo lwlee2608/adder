@@ -365,6 +365,45 @@ func TestEnvVarExpansionInYAML(t *testing.T) {
 		require.NoError(t, a.Unmarshal(&cfg))
 		assert.Equal(t, "postgres://prod-server:5432/mydb", cfg.Db.URL)
 	})
+
+	t.Run("bare $VAR is not expanded", func(t *testing.T) {
+		dir := t.TempDir()
+		content := `something:
+  apikey: $SOMETHING_API_KEY
+`
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "application.yaml"), []byte(content), 0o644))
+		t.Setenv("SOMETHING_API_KEY", "my-secret-key")
+
+		a := New()
+		a.SetConfigName("application")
+		a.SetConfigType("yaml")
+		a.AddConfigPath(dir)
+
+		require.NoError(t, a.ReadInConfig())
+
+		var cfg config
+		require.NoError(t, a.Unmarshal(&cfg))
+		assert.Equal(t, "$SOMETHING_API_KEY", cfg.Something.ApiKey)
+	})
+
+	t.Run("literal dollar signs are preserved", func(t *testing.T) {
+		dir := t.TempDir()
+		content := `something:
+  apikey: p@$$word
+`
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "application.yaml"), []byte(content), 0o644))
+
+		a := New()
+		a.SetConfigName("application")
+		a.SetConfigType("yaml")
+		a.AddConfigPath(dir)
+
+		require.NoError(t, a.ReadInConfig())
+
+		var cfg config
+		require.NoError(t, a.Unmarshal(&cfg))
+		assert.Equal(t, "p@$$word", cfg.Something.ApiKey)
+	})
 }
 
 func TestUnmarshalStringArrayFromYAML(t *testing.T) {
