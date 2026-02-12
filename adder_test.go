@@ -292,6 +292,81 @@ func TestCaseInsensitiveYAMLKeys(t *testing.T) {
 	}
 }
 
+func TestEnvVarExpansionInYAML(t *testing.T) {
+	type something struct {
+		ApiKey string
+	}
+	type config struct {
+		Something something
+	}
+
+	t.Run("expands ${VAR} syntax", func(t *testing.T) {
+		dir := t.TempDir()
+		content := `something:
+  apikey: ${SOMETHING_API_KEY}
+`
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "application.yaml"), []byte(content), 0o644))
+		t.Setenv("SOMETHING_API_KEY", "my-secret-key")
+
+		a := New()
+		a.SetConfigName("application")
+		a.SetConfigType("yaml")
+		a.AddConfigPath(dir)
+
+		require.NoError(t, a.ReadInConfig())
+
+		var cfg config
+		require.NoError(t, a.Unmarshal(&cfg))
+		assert.Equal(t, "my-secret-key", cfg.Something.ApiKey)
+	})
+
+	t.Run("unset var expands to empty string", func(t *testing.T) {
+		dir := t.TempDir()
+		content := `something:
+  apikey: ${UNSET_VAR_12345}
+`
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "application.yaml"), []byte(content), 0o644))
+
+		a := New()
+		a.SetConfigName("application")
+		a.SetConfigType("yaml")
+		a.AddConfigPath(dir)
+
+		require.NoError(t, a.ReadInConfig())
+
+		var cfg config
+		require.NoError(t, a.Unmarshal(&cfg))
+		assert.Equal(t, "", cfg.Something.ApiKey)
+	})
+
+	t.Run("mixed literal and env var", func(t *testing.T) {
+		type db struct {
+			URL string `mapstructure:"url"`
+		}
+		type dbConfig struct {
+			Db db
+		}
+
+		dir := t.TempDir()
+		content := `db:
+  url: postgres://${DB_HOST}:5432/mydb
+`
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "application.yaml"), []byte(content), 0o644))
+		t.Setenv("DB_HOST", "prod-server")
+
+		a := New()
+		a.SetConfigName("application")
+		a.SetConfigType("yaml")
+		a.AddConfigPath(dir)
+
+		require.NoError(t, a.ReadInConfig())
+
+		var cfg dbConfig
+		require.NoError(t, a.Unmarshal(&cfg))
+		assert.Equal(t, "postgres://prod-server:5432/mydb", cfg.Db.URL)
+	})
+}
+
 func TestUnmarshalStringArrayFromYAML(t *testing.T) {
 	type appConfig struct {
 		AllowedOrigins []string `mapstructure:"allowed_origins"`

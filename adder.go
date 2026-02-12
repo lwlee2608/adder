@@ -140,6 +140,9 @@ func (a *Adder) ReadInConfig() error {
 		return fmt.Errorf("failed to read config file: %w", err)
 	}
 
+	// Expand environment variables (e.g. ${VAR} or $VAR) in the raw config
+	data = []byte(os.ExpandEnv(string(data)))
+
 	switch a.configType {
 	case "yaml", "yml":
 		if err := yaml.Unmarshal(data, &a.configValues); err != nil {
