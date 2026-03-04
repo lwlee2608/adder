@@ -184,7 +184,6 @@ func maskString(s string, rule maskRule) string {
 	}
 
 	var b strings.Builder
-	b.Grow(n)
 	if keepFirst > 0 {
 		b.WriteString(string(runes[:keepFirst]))
 	}
