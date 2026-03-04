@@ -36,10 +36,10 @@ func TestPrettyJSON_MasksTaggedFields(t *testing.T) {
 
 	want := `{
   "Name": "service",
-  "APIKey": "A*******IJ",
+  "APIKey": "A*****IJ",
   "Auth": {
-    "Password": "******",
-    "Token": "********ken",
+    "Password": "*****",
+    "Token": "*****ken",
     "Note": "visible"
   }
 }`
@@ -73,7 +73,7 @@ func TestPrettyJSON_PointerInput(t *testing.T) {
 	require.NoError(t, err)
 
 	want := `{
-  "Secret": "****"
+  "Secret": "*****"
 }`
 	assert.Equal(t, want, got)
 	assert.Equal(t, "abcd", v.Secret)
@@ -108,7 +108,7 @@ func TestPrettyJSON_InvalidMaskTagFallsBackToFullMask(t *testing.T) {
 	require.NoError(t, err)
 
 	want := `{
-  "Secret": "******"
+  "Secret": "*****"
 }`
 	assert.Equal(t, want, got)
 }
@@ -124,12 +124,12 @@ func TestPrettyJSON_InvalidTagPartInvalidatesWholeRule(t *testing.T) {
 	require.NoError(t, err)
 
 	want := `{
-  "Secret": "******"
+  "Secret": "*****"
 }`
 	assert.Equal(t, want, got)
 }
 
-func TestPrettyJSON_ForceAtLeastOneMaskedRune(t *testing.T) {
+func TestPrettyJSON_OverlappingFirstLastFallsBackToFullMask(t *testing.T) {
 	type config struct {
 		Secret string `mask:"first=2,last=2"`
 	}
@@ -140,7 +140,7 @@ func TestPrettyJSON_ForceAtLeastOneMaskedRune(t *testing.T) {
 	require.NoError(t, err)
 
 	want := `{
-  "Secret": "ab*d"
+  "Secret": "*****"
 }`
 	assert.Equal(t, want, got)
 }
@@ -167,7 +167,39 @@ func TestPrettyJSON_UnicodeMaskingIsRuneAware(t *testing.T) {
 	require.NoError(t, err)
 
 	want := `{
-  "Secret": "日本****"
+  "Secret": "日本*****"
+}`
+	assert.Equal(t, want, got)
+}
+
+func TestPrettyJSON_PreserveLengthOption(t *testing.T) {
+	type config struct {
+		Secret string `mask:"first=1,last=1,preserve=true"`
+	}
+
+	v := config{Secret: "ABCDEFGHIJ"}
+
+	got, err := PrettyJSON(v)
+	require.NoError(t, err)
+
+	want := `{
+  "Secret": "A********J"
+}`
+	assert.Equal(t, want, got)
+}
+
+func TestPrettyJSON_PreserveLengthOptionOnFullMask(t *testing.T) {
+	type config struct {
+		Secret string `mask:"true,preserve=true"`
+	}
+
+	v := config{Secret: "abcdef"}
+
+	got, err := PrettyJSON(v)
+	require.NoError(t, err)
+
+	want := `{
+  "Secret": "******"
 }`
 	assert.Equal(t, want, got)
 }
@@ -227,7 +259,7 @@ func TestPrettyJSON_MasksSlicesAndMaps(t *testing.T) {
 	require.Len(t, decoded.List, 1)
 	require.Contains(t, decoded.ByID, "a")
 	assert.Equal(t, "*****", decoded.List[0].Secret)
-	assert.Equal(t, "******", decoded.ByID["a"].Secret)
+	assert.Equal(t, "*****", decoded.ByID["a"].Secret)
 
 	assert.Equal(t, "first", v.List[0].Secret)
 	assert.Equal(t, "second", v.ByID["a"].Secret)
@@ -254,6 +286,6 @@ func TestPrettyJSON_MasksPointerToPointerStruct(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal([]byte(got), &decoded))
 	require.NotNil(t, decoded.Ref)
-	assert.Equal(t, "****ef", decoded.Ref.Value)
+	assert.Equal(t, "*****ef", decoded.Ref.Value)
 	assert.Equal(t, "abcdef", (**v.Ref).Value)
 }
