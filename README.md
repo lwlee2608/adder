@@ -63,6 +63,11 @@ Supported tags:
 - `mask:"first=N,last=M"` keep both ends
 - `mask:"...,preserve=true"` (optional) keeps original length; default masked segment is always 5 `*`
 
+Notes:
+
+- Without `preserve=true`, masked segments are always replaced with exactly 5 `*`.
+- If `first+last` overlaps the input and `preserve=true` is not set, masking falls back to `*****`.
+
 ```go
 type AuthConfig struct {
     Password string `mask:"true"`
