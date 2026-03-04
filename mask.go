@@ -7,12 +7,16 @@ import (
 	"strings"
 )
 
-const maskChar = "*"
+const (
+	maskChar          = "*"
+	defaultMaskLength = 5
+)
 
 type maskRule struct {
-	fullMask bool
-	first int
-	last  int
+	fullMask       bool
+	first          int
+	last           int
+	preserveLength bool
 }
 
 // PrettyJSON returns an indented JSON string with sensitive fields masked.
@@ -23,8 +27,10 @@ type maskRule struct {
 //   - `mask:"first=N"` to keep the first N runes
 //   - `mask:"last=N"` to keep the last N runes
 //   - `mask:"first=N,last=M"` to keep both ends
+//   - add `preserve=true` to keep the original rune length
 //
-// Masking is length-preserving and rune-aware. The input value is not modified.
+// By default, masked portions are replaced with 5 `*` characters.
+// The input value is not modified.
 func PrettyJSON(v any) (string, error) {
 	masked := maskSensitiveCopy(v)
 	b, err := json.MarshalIndent(masked, "", "  ")
@@ -154,16 +160,25 @@ func parseMaskTag(tag string) (maskRule, bool) {
 		key = strings.ToLower(strings.TrimSpace(key))
 		val = strings.TrimSpace(val)
 
-		n, err := strconv.Atoi(val)
-		if err != nil || n < 0 {
-			return maskRule{fullMask: true}, true
-		}
-
 		switch key {
 		case "first":
+			n, err := strconv.Atoi(val)
+			if err != nil || n < 0 {
+				return maskRule{fullMask: true}, true
+			}
 			rule.first = n
 		case "last":
+			n, err := strconv.Atoi(val)
+			if err != nil || n < 0 {
+				return maskRule{fullMask: true}, true
+			}
 			rule.last = n
+		case "preserve", "preservelength", "preserve_length", "preserve-length":
+			b, err := strconv.ParseBool(val)
+			if err != nil {
+				return maskRule{fullMask: true}, true
+			}
+			rule.preserveLength = b
 		default:
 			return maskRule{fullMask: true}, true
 		}
@@ -180,6 +195,9 @@ func maskString(s string, rule maskRule) string {
 	}
 
 	if rule.fullMask {
+		if !rule.preserveLength {
+			return strings.Repeat(maskChar, defaultMaskLength)
+		}
 		return strings.Repeat(maskChar, n)
 	}
 
@@ -196,9 +214,9 @@ func maskString(s string, rule maskRule) string {
 		}
 	}
 
-	maskedCount := n - keepFirst - keepLast
-	if maskedCount <= 0 {
-		return strings.Repeat(maskChar, n)
+	maskedCount := defaultMaskLength
+	if rule.preserveLength {
+		maskedCount = n - keepFirst - keepLast
 	}
 
 	var b strings.Builder
