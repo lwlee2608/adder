@@ -173,7 +173,7 @@ func parseMaskTag(tag string) (maskRule, bool) {
 				return maskRule{fullMask: true}, true
 			}
 			rule.last = n
-		case "preserve", "preservelength", "preserve_length", "preserve-length":
+		case "preserve":
 			b, err := strconv.ParseBool(val)
 			if err != nil {
 				return maskRule{fullMask: true}, true
