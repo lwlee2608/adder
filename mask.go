@@ -169,21 +169,12 @@ func maskString(s string, rule maskRule) string {
 	keepLast := min(rule.last, n)
 
 	if keepFirst+keepLast >= n {
-		if n == 1 {
+		total := n - 1
+		if total <= 0 {
 			keepFirst, keepLast = 0, 0
 		} else {
-			overflow := keepFirst + keepLast - (n - 1)
-			if keepLast >= overflow {
-				keepLast -= overflow
-			} else {
-				overflow -= keepLast
-				keepLast = 0
-				if keepFirst >= overflow {
-					keepFirst -= overflow
-				} else {
-					keepFirst = 0
-				}
-			}
+			keepFirst = min(keepFirst, total)
+			keepLast = min(keepLast, total-keepFirst)
 		}
 	}
 
