@@ -10,7 +10,7 @@ import (
 const maskChar = "*"
 
 type maskRule struct {
-	valid bool
+	fullMask bool
 	first int
 	last  int
 }
@@ -112,9 +112,9 @@ func maskStruct(v reflect.Value) {
 		switch field.Kind() {
 		case reflect.Struct, reflect.Ptr, reflect.Slice, reflect.Array, reflect.Map, reflect.Interface:
 			field.Set(cloneAndMaskValue(field))
-		}
-
-		if field.Kind() != reflect.String {
+			continue
+		case reflect.String:
+		default:
 			continue
 		}
 
@@ -133,10 +133,10 @@ func parseMaskTag(tag string) (maskRule, bool) {
 		return maskRule{}, false
 	}
 	if strings.EqualFold(tag, "true") {
-		return maskRule{valid: true}, true
+		return maskRule{fullMask: true}, true
 	}
 
-	rule := maskRule{valid: true}
+	rule := maskRule{}
 	for _, part := range strings.Split(tag, ",") {
 		part = strings.TrimSpace(part)
 		if part == "" || strings.EqualFold(part, "true") {
@@ -148,7 +148,7 @@ func parseMaskTag(tag string) (maskRule, bool) {
 
 		key, val, ok := strings.Cut(part, "=")
 		if !ok {
-			return maskRule{valid: false}, true
+			return maskRule{fullMask: true}, true
 		}
 
 		key = strings.ToLower(strings.TrimSpace(key))
@@ -156,7 +156,7 @@ func parseMaskTag(tag string) (maskRule, bool) {
 
 		n, err := strconv.Atoi(val)
 		if err != nil || n < 0 {
-			return maskRule{valid: false}, true
+			return maskRule{fullMask: true}, true
 		}
 
 		switch key {
@@ -165,7 +165,7 @@ func parseMaskTag(tag string) (maskRule, bool) {
 		case "last":
 			rule.last = n
 		default:
-			return maskRule{valid: false}, true
+			return maskRule{fullMask: true}, true
 		}
 	}
 
@@ -179,7 +179,7 @@ func maskString(s string, rule maskRule) string {
 		return ""
 	}
 
-	if !rule.valid {
+	if rule.fullMask {
 		return strings.Repeat(maskChar, n)
 	}
 
