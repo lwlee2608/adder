@@ -113,6 +113,22 @@ func TestPrettyJSON_InvalidMaskTagFallsBackToFullMask(t *testing.T) {
 	assert.Equal(t, want, got)
 }
 
+func TestPrettyJSON_InvalidTagPartInvalidatesWholeRule(t *testing.T) {
+	type config struct {
+		Secret string `mask:"first=3,bogus=x"`
+	}
+
+	v := config{Secret: "abcdef"}
+
+	got, err := PrettyJSON(v)
+	require.NoError(t, err)
+
+	want := `{
+  "Secret": "******"
+}`
+	assert.Equal(t, want, got)
+}
+
 func TestPrettyJSON_ForceAtLeastOneMaskedRune(t *testing.T) {
 	type config struct {
 		Secret string `mask:"first=2,last=2"`

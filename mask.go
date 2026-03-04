@@ -148,8 +148,7 @@ func parseMaskTag(tag string) (maskRule, bool) {
 
 		key, val, ok := strings.Cut(part, "=")
 		if !ok {
-			rule.valid = false
-			continue
+			return maskRule{valid: false}, true
 		}
 
 		key = strings.ToLower(strings.TrimSpace(key))
@@ -157,8 +156,7 @@ func parseMaskTag(tag string) (maskRule, bool) {
 
 		n, err := strconv.Atoi(val)
 		if err != nil || n < 0 {
-			rule.valid = false
-			continue
+			return maskRule{valid: false}, true
 		}
 
 		switch key {
@@ -167,7 +165,7 @@ func parseMaskTag(tag string) (maskRule, bool) {
 		case "last":
 			rule.last = n
 		default:
-			rule.valid = false
+			return maskRule{valid: false}, true
 		}
 	}
 
