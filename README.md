@@ -53,37 +53,34 @@ if err := adder.Unmarshal(&config); err != nil {
 
 ## Mask Sensitive Fields
 
-`PrettyJSON` returns indented JSON while masking fields tagged with `mask`.
+`PrettyJSON` returns indented JSON while masking string fields tagged with `mask`.
+
+Supported tags:
+
+- `mask:"true"` full mask
+- `mask:"first=N"` keep first `N` chars
+- `mask:"last=N"` keep last `N` chars
+- `mask:"first=N,last=M"` keep both ends
 
 ```go
 type AuthConfig struct {
-    Username string
     Password string `mask:"true"`
-    Token    string `mask:"last=4"`
+    Token    string `mask:"last=3"`
     APIKey   string `mask:"first=2,last=2"`
 }
 
-cfg := AuthConfig{
-    Username: "admin",
-    Password: "s3cret",
-    Token:    "abcdef123456",
-    APIKey:   "ABCDEFGHIJ",
-}
+cfg := AuthConfig{Password: "s3cret", Token: "abcdef", APIKey: "ABCDEFGHIJ"}
 
-s, err := adder.PrettyJSON(cfg)
+jsonStr, err := adder.PrettyJSON(cfg)
 if err != nil {
     panic(err)
 }
-fmt.Println(s)
+fmt.Println(jsonStr)
 ```
 
 ## Examples
 
-See the [example/](example/) directory:
-
-- **[basic](example/basic/)** — Load config from a YAML file
-- **[env-override](example/env-override/)** — Override config values with environment variables
-- **[bind-env](example/bind-env/)** — Bind config keys to specific env var names
+See runnable examples in [`example/`](example/).
 
 ## License
 
