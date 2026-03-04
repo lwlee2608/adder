@@ -48,7 +48,34 @@ if err := adder.Unmarshal(&config); err != nil {
 - Automatic environment variable overrides via `AutomaticEnv()`
 - Explicit env var binding via `BindEnv()`
 - `mapstructure` struct tags for custom field mapping
+- Pretty JSON output with sensitive field masking via `PrettyJSON()`
 - Singleton and instance-based usage
+
+## Mask Sensitive Fields
+
+`PrettyJSON` returns indented JSON while masking fields tagged with `mask`.
+
+```go
+type AuthConfig struct {
+    Username string
+    Password string `mask:"true"`
+    Token    string `mask:"last=4"`
+    APIKey   string `mask:"first=2,last=2"`
+}
+
+cfg := AuthConfig{
+    Username: "admin",
+    Password: "s3cret",
+    Token:    "abcdef123456",
+    APIKey:   "ABCDEFGHIJ",
+}
+
+s, err := adder.PrettyJSON(cfg)
+if err != nil {
+    panic(err)
+}
+fmt.Println(s)
+```
 
 ## Examples
 
