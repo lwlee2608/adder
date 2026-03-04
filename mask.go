@@ -205,6 +205,10 @@ func maskString(s string, rule maskRule) string {
 	keepLast := min(rule.last, n)
 
 	if keepFirst+keepLast >= n {
+		if !rule.preserveLength {
+			return strings.Repeat(maskChar, defaultMaskLength)
+		}
+
 		total := n - 1
 		if total <= 0 {
 			keepFirst, keepLast = 0, 0

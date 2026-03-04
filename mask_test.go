@@ -129,7 +129,7 @@ func TestPrettyJSON_InvalidTagPartInvalidatesWholeRule(t *testing.T) {
 	assert.Equal(t, want, got)
 }
 
-func TestPrettyJSON_OverlappingFirstLastUsesFixedMaskSegment(t *testing.T) {
+func TestPrettyJSON_OverlappingFirstLastFallsBackToFullMask(t *testing.T) {
 	type config struct {
 		Secret string `mask:"first=2,last=2"`
 	}
@@ -140,7 +140,7 @@ func TestPrettyJSON_OverlappingFirstLastUsesFixedMaskSegment(t *testing.T) {
 	require.NoError(t, err)
 
 	want := `{
-  "Secret": "ab*****d"
+  "Secret": "*****"
 }`
 	assert.Equal(t, want, got)
 }
