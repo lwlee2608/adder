@@ -61,7 +61,7 @@ Supported tags:
 - `mask:"first=N"` keep first `N` chars
 - `mask:"last=N"` keep last `N` chars
 - `mask:"first=N,last=M"` keep both ends
-- `preserve=true` (optional) keeps original length; default masked segment is always 5 `*`
+- `mask:"...,preserve=true"` (optional) keeps original length; default masked segment is always 5 `*`
 
 ```go
 type AuthConfig struct {
