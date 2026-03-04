@@ -59,13 +59,40 @@ func cloneAndMaskValue(v reflect.Value) reflect.Value {
 		if v.IsNil() {
 			return v
 		}
-		elem := v.Elem()
-		if elem.Kind() != reflect.Struct {
+		cp := reflect.New(v.Type().Elem())
+		cp.Elem().Set(cloneAndMaskValue(v.Elem()))
+		return cp
+	case reflect.Slice:
+		if v.IsNil() {
 			return v
 		}
-		cp := reflect.New(elem.Type())
-		cp.Elem().Set(elem)
-		maskStruct(cp.Elem())
+		cp := reflect.MakeSlice(v.Type(), v.Len(), v.Len())
+		for i := 0; i < v.Len(); i++ {
+			cp.Index(i).Set(cloneAndMaskValue(v.Index(i)))
+		}
+		return cp
+	case reflect.Array:
+		cp := reflect.New(v.Type()).Elem()
+		for i := 0; i < v.Len(); i++ {
+			cp.Index(i).Set(cloneAndMaskValue(v.Index(i)))
+		}
+		return cp
+	case reflect.Map:
+		if v.IsNil() {
+			return v
+		}
+		cp := reflect.MakeMapWithSize(v.Type(), v.Len())
+		iter := v.MapRange()
+		for iter.Next() {
+			cp.SetMapIndex(iter.Key(), cloneAndMaskValue(iter.Value()))
+		}
+		return cp
+	case reflect.Interface:
+		if v.IsNil() {
+			return v
+		}
+		cp := reflect.New(v.Type()).Elem()
+		cp.Set(cloneAndMaskValue(v.Elem()))
 		return cp
 	default:
 		return v
@@ -83,15 +110,8 @@ func maskStruct(v reflect.Value) {
 		field := v.Field(i)
 
 		switch field.Kind() {
-		case reflect.Struct:
-			maskStruct(field)
-		case reflect.Ptr:
-			if !field.IsNil() && field.Elem().Kind() == reflect.Struct {
-				cp := reflect.New(field.Elem().Type())
-				cp.Elem().Set(field.Elem())
-				maskStruct(cp.Elem())
-				field.Set(cp)
-			}
+		case reflect.Struct, reflect.Ptr, reflect.Slice, reflect.Array, reflect.Map, reflect.Interface:
+			field.Set(cloneAndMaskValue(field))
 		}
 
 		if field.Kind() != reflect.String {

@@ -1,6 +1,7 @@
 package adder
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -137,4 +138,58 @@ func TestPrettyJSON_MarshalError(t *testing.T) {
 
 	_, err := PrettyJSON(v)
 	require.Error(t, err)
+}
+
+func TestPrettyJSON_MasksSlicesAndMaps(t *testing.T) {
+	type auth struct {
+		Secret string `mask:"true"`
+	}
+
+	type config struct {
+		List []auth
+		ByID map[string]auth
+	}
+
+	v := config{
+		List: []auth{{Secret: "first"}},
+		ByID: map[string]auth{"a": {Secret: "second"}},
+	}
+
+	got, err := PrettyJSON(v)
+	require.NoError(t, err)
+
+	var decoded config
+	require.NoError(t, json.Unmarshal([]byte(got), &decoded))
+	require.Len(t, decoded.List, 1)
+	require.Contains(t, decoded.ByID, "a")
+	assert.Equal(t, "*****", decoded.List[0].Secret)
+	assert.Equal(t, "******", decoded.ByID["a"].Secret)
+
+	assert.Equal(t, "first", v.List[0].Secret)
+	assert.Equal(t, "second", v.ByID["a"].Secret)
+}
+
+func TestPrettyJSON_MasksPointerToPointerStruct(t *testing.T) {
+	type secret struct {
+		Value string `mask:"last=2"`
+	}
+
+	type config struct {
+		Ref **secret
+	}
+
+	inner := &secret{Value: "abcdef"}
+	p := &inner
+	v := config{Ref: p}
+
+	got, err := PrettyJSON(v)
+	require.NoError(t, err)
+
+	var decoded struct {
+		Ref *secret
+	}
+	require.NoError(t, json.Unmarshal([]byte(got), &decoded))
+	require.NotNil(t, decoded.Ref)
+	assert.Equal(t, "****ef", decoded.Ref.Value)
+	assert.Equal(t, "abcdef", (**v.Ref).Value)
 }
