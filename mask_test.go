@@ -156,6 +156,54 @@ func TestPrettyJSON_MarshalError(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestPrettyJSON_UnicodeMaskingIsRuneAware(t *testing.T) {
+	type config struct {
+		Secret string `mask:"first=2"`
+	}
+
+	v := config{Secret: "日本語abc"}
+
+	got, err := PrettyJSON(v)
+	require.NoError(t, err)
+
+	want := `{
+  "Secret": "日本****"
+}`
+	assert.Equal(t, want, got)
+}
+
+func TestPrettyJSON_MaskFalseSkipsMasking(t *testing.T) {
+	type config struct {
+		Secret string `mask:"false"`
+	}
+
+	v := config{Secret: "abcdef"}
+
+	got, err := PrettyJSON(v)
+	require.NoError(t, err)
+
+	want := `{
+  "Secret": "abcdef"
+}`
+	assert.Equal(t, want, got)
+}
+
+func TestPrettyJSON_EmptyStringStaysEmpty(t *testing.T) {
+	type config struct {
+		Secret string `mask:"true"`
+	}
+
+	v := config{Secret: ""}
+
+	got, err := PrettyJSON(v)
+	require.NoError(t, err)
+
+	want := `{
+  "Secret": ""
+}`
+	assert.Equal(t, want, got)
+}
+
 func TestPrettyJSON_MasksSlicesAndMaps(t *testing.T) {
 	type auth struct {
 		Secret string `mask:"true"`
