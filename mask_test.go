@@ -129,7 +129,7 @@ func TestPrettyJSON_InvalidTagPartInvalidatesWholeRule(t *testing.T) {
 	assert.Equal(t, want, got)
 }
 
-func TestPrettyJSON_ForceAtLeastOneMaskedRune(t *testing.T) {
+func TestPrettyJSON_OverlappingFirstLastUsesFixedMaskSegment(t *testing.T) {
 	type config struct {
 		Secret string `mask:"first=2,last=2"`
 	}
