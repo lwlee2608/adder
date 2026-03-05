@@ -302,7 +302,7 @@ func (a *Adder) setFieldValue(field reflect.Value, value any, keyPath string) er
 			field.SetBool(b)
 		}
 	case reflect.Slice:
-		return setSliceField(field, value)
+		return a.setSliceField(field, value, keyPath)
 	}
 
 	return nil
@@ -344,7 +344,7 @@ func insensitiviseMap(m map[string]any) {
 	}
 }
 
-func setSliceField(field reflect.Value, value any) error {
+func (a *Adder) setSliceField(field reflect.Value, value any, keyPath string) error {
 	slice, ok := value.([]any)
 	if !ok {
 		return nil
@@ -366,6 +366,12 @@ func setSliceField(field reflect.Value, value any) error {
 				elem.SetInt(int64(v))
 			case float64:
 				elem.SetInt(int64(v))
+			}
+		case reflect.Struct:
+			if m, ok := item.(map[string]any); ok {
+				if err := a.unmarshalWithPath(m, elem.Addr().Interface(), keyPath); err != nil {
+					return err
+				}
 			}
 		}
 	}
