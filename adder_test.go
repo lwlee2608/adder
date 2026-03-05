@@ -406,6 +406,35 @@ func TestEnvVarExpansionInYAML(t *testing.T) {
 	})
 }
 
+func TestUnmarshalStructSliceFromYAML(t *testing.T) {
+	type item struct {
+		Name  string
+		Count int
+	}
+	type config struct {
+		Items []item
+	}
+
+	dir := t.TempDir()
+	content := "items:\n  - Name: foo\n    Count: 10\n  - name: bar\n    count: 20\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "application.yaml"), []byte(content), 0o644))
+
+	a := New()
+	a.SetConfigName("application")
+	a.SetConfigType("yaml")
+	a.AddConfigPath(dir)
+	require.NoError(t, a.ReadInConfig())
+
+	var cfg config
+	require.NoError(t, a.Unmarshal(&cfg))
+
+	require.Len(t, cfg.Items, 2)
+	assert.Equal(t, "foo", cfg.Items[0].Name)
+	assert.Equal(t, 10, cfg.Items[0].Count)
+	assert.Equal(t, "bar", cfg.Items[1].Name)
+	assert.Equal(t, 20, cfg.Items[1].Count)
+}
+
 func TestUnmarshalStringArrayFromYAML(t *testing.T) {
 	type appConfig struct {
 		AllowedOrigins []string `mapstructure:"allowed_origins"`
