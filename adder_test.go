@@ -416,7 +416,7 @@ func TestUnmarshalStructSliceFromYAML(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	content := "items:\n  - name: foo\n    count: 10\n  - name: bar\n    count: 20\n"
+	content := "items:\n  - Name: foo\n    Count: 10\n  - name: bar\n    count: 20\n"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "application.yaml"), []byte(content), 0o644))
 
 	a := New()

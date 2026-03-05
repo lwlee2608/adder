@@ -335,11 +335,21 @@ func insensitiviseMap(m map[string]any) {
 		switch v := val.(type) {
 		case map[string]any:
 			insensitiviseMap(v)
+		case []any:
+			insensitiviseSlice(v)
 		}
 		lower := strings.ToLower(key)
 		if key != lower {
 			delete(m, key)
 			m[lower] = val
+		}
+	}
+}
+
+func insensitiviseSlice(s []any) {
+	for _, item := range s {
+		if m, ok := item.(map[string]any); ok {
+			insensitiviseMap(m)
 		}
 	}
 }
