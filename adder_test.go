@@ -493,8 +493,8 @@ servers:
 	require.Len(t, cfg.Servers, 2)
 	assert.Equal(t, "api", cfg.Servers[0].Name)
 	assert.Equal(t, map[string]string{
-		"authorization": "Bearer token",
-		"x-custom":      "value",
+		"Authorization": "Bearer token",
+		"X-Custom":      "value",
 	}, cfg.Servers[0].Headers)
 	assert.Equal(t, "plain", cfg.Servers[1].Name)
 	assert.Nil(t, cfg.Servers[1].Headers)

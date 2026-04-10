@@ -120,8 +120,8 @@ func (a *Adder) BindEnv(key string, envVar string) error {
 func ReadInConfig() error { return defaultAdder.ReadInConfig() }
 
 // ReadInConfig searches the configured paths for the config file and loads it.
-// All YAML keys are lowercased after parsing, so keys like "baseURL", "baseUrl",
-// and "baseurl" all match the same struct field.
+// Struct field matching is case-insensitive, so YAML keys like "baseURL", "baseUrl",
+// and "baseurl" all match the same struct field. Map keys preserve their original casing.
 // [Adder.SetConfigName], [Adder.SetConfigType], and [Adder.AddConfigPath] must be called before this.
 func (a *Adder) ReadInConfig() error {
 	var configFile string
@@ -173,7 +173,6 @@ func (a *Adder) ReadInConfig() error {
 		if err := yaml.Unmarshal(data, &a.configValues); err != nil {
 			return fmt.Errorf("failed to parse yaml: %w", err)
 		}
-		insensitiviseMap(a.configValues)
 	default:
 		return fmt.Errorf("unsupported config type: %s", a.configType)
 	}
@@ -239,8 +238,8 @@ func (a *Adder) unmarshalWithPath(data map[string]any, v any, prefix string) err
 			continue
 		}
 
-		// Get value from config
-		configVal, exists := data[fieldName]
+		// Get value from config (case-insensitive lookup)
+		configVal, exists := caseInsensitiveLookup(data, fieldName)
 		if !exists {
 			// Still recurse into struct fields to check env bindings
 			if fieldValue.Kind() == reflect.Struct {
@@ -370,28 +369,17 @@ func setFieldFromString(field reflect.Value, value string) error {
 	return nil
 }
 
-func insensitiviseMap(m map[string]any) {
-	for key, val := range m {
-		switch v := val.(type) {
-		case map[string]any:
-			insensitiviseMap(v)
-		case []any:
-			insensitiviseSlice(v)
-		}
-		lower := strings.ToLower(key)
-		if key != lower {
-			delete(m, key)
-			m[lower] = val
+func caseInsensitiveLookup(m map[string]any, key string) (any, bool) {
+	if v, ok := m[key]; ok {
+		return v, true
+	}
+	lower := strings.ToLower(key)
+	for k, v := range m {
+		if strings.ToLower(k) == lower {
+			return v, true
 		}
 	}
-}
-
-func insensitiviseSlice(s []any) {
-	for _, item := range s {
-		if m, ok := item.(map[string]any); ok {
-			insensitiviseMap(m)
-		}
-	}
+	return nil, false
 }
 
 func (a *Adder) setSliceField(field reflect.Value, value any, keyPath string) error {
