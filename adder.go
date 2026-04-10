@@ -30,6 +30,7 @@ import (
 // variable overrides. Use [New] to create an instance, or use the package-level
 // functions which operate on a default instance.
 type Adder struct {
+	configFile   string
 	configName   string
 	configType   string
 	configPaths  []string
@@ -49,6 +50,15 @@ func New() *Adder {
 }
 
 var defaultAdder = New()
+
+// SetConfigFile calls [Adder.SetConfigFile] on the default instance.
+func SetConfigFile(path string) { defaultAdder.SetConfigFile(path) }
+
+// SetConfigFile sets the exact config file path to use, bypassing the
+// name/type/path search. The file is read directly by [Adder.ReadInConfig].
+func (a *Adder) SetConfigFile(path string) {
+	a.configFile = path
+}
 
 // SetConfigName calls [Adder.SetConfigName] on the default instance.
 func SetConfigName(name string) { defaultAdder.SetConfigName(name) }
@@ -114,26 +124,40 @@ func ReadInConfig() error { return defaultAdder.ReadInConfig() }
 // and "baseurl" all match the same struct field.
 // [Adder.SetConfigName], [Adder.SetConfigType], and [Adder.AddConfigPath] must be called before this.
 func (a *Adder) ReadInConfig() error {
-	if a.configName == "" {
-		return fmt.Errorf("config name not set")
-	}
-
 	var configFile string
-	for _, path := range a.configPaths {
-		for _, ext := range configExtensions(a.configType) {
-			candidate := filepath.Join(path, a.configName+"."+ext)
-			if _, err := os.Stat(candidate); err == nil {
-				configFile = candidate
+
+	if a.configFile != "" {
+		if _, err := os.Stat(a.configFile); err != nil {
+			return fmt.Errorf("config file not found: %s", a.configFile)
+		}
+		configFile = a.configFile
+		if a.configType == "" {
+			ext := strings.TrimPrefix(filepath.Ext(configFile), ".")
+			if ext != "" {
+				a.configType = strings.ToLower(ext)
+			} else {
+				a.configType = "yaml"
+			}
+		}
+	} else {
+		if a.configName == "" {
+			return fmt.Errorf("config name not set")
+		}
+		for _, path := range a.configPaths {
+			for _, ext := range configExtensions(a.configType) {
+				candidate := filepath.Join(path, a.configName+"."+ext)
+				if _, err := os.Stat(candidate); err == nil {
+					configFile = candidate
+					break
+				}
+			}
+			if configFile != "" {
 				break
 			}
 		}
-		if configFile != "" {
-			break
+		if configFile == "" {
+			return fmt.Errorf("config file not found: %s.%s", a.configName, a.configType)
 		}
-	}
-
-	if configFile == "" {
-		return fmt.Errorf("config file not found: %s.%s", a.configName, a.configType)
 	}
 
 	data, err := os.ReadFile(configFile)
@@ -300,6 +324,22 @@ func (a *Adder) setFieldValue(field reflect.Value, value any, keyPath string) er
 	case reflect.Bool:
 		if b, ok := value.(bool); ok {
 			field.SetBool(b)
+		}
+	case reflect.Map:
+		if m, ok := value.(map[string]any); ok {
+			mapType := field.Type()
+			newMap := reflect.MakeMap(mapType)
+			for k, v := range m {
+				mapKey := reflect.ValueOf(k)
+				if mapType.Elem().Kind() == reflect.String {
+					if s, ok := v.(string); ok {
+						newMap.SetMapIndex(mapKey, reflect.ValueOf(s))
+					}
+				} else {
+					newMap.SetMapIndex(mapKey, reflect.ValueOf(v))
+				}
+			}
+			field.Set(newMap)
 		}
 	case reflect.Slice:
 		return a.setSliceField(field, value, keyPath)
