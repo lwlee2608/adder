@@ -30,6 +30,7 @@ import (
 // variable overrides. Use [New] to create an instance, or use the package-level
 // functions which operate on a default instance.
 type Adder struct {
+	configFile   string
 	configName   string
 	configType   string
 	configPaths  []string
@@ -49,6 +50,15 @@ func New() *Adder {
 }
 
 var defaultAdder = New()
+
+// SetConfigFile calls [Adder.SetConfigFile] on the default instance.
+func SetConfigFile(path string) { defaultAdder.SetConfigFile(path) }
+
+// SetConfigFile sets the exact config file path to use, bypassing the
+// name/type/path search. The file is read directly by [Adder.ReadInConfig].
+func (a *Adder) SetConfigFile(path string) {
+	a.configFile = path
+}
 
 // SetConfigName calls [Adder.SetConfigName] on the default instance.
 func SetConfigName(name string) { defaultAdder.SetConfigName(name) }
@@ -110,30 +120,44 @@ func (a *Adder) BindEnv(key string, envVar string) error {
 func ReadInConfig() error { return defaultAdder.ReadInConfig() }
 
 // ReadInConfig searches the configured paths for the config file and loads it.
-// All YAML keys are lowercased after parsing, so keys like "baseURL", "baseUrl",
-// and "baseurl" all match the same struct field.
-// [Adder.SetConfigName], [Adder.SetConfigType], and [Adder.AddConfigPath] must be called before this.
+// Struct field matching is case-insensitive, so YAML keys like "baseURL", "baseUrl",
+// and "baseurl" all match the same struct field. Map keys preserve their original casing.
+// Either [Adder.SetConfigFile] or [Adder.SetConfigName]/[Adder.SetConfigType]/[Adder.AddConfigPath] must be called before this.
 func (a *Adder) ReadInConfig() error {
-	if a.configName == "" {
-		return fmt.Errorf("config name not set")
-	}
-
 	var configFile string
-	for _, path := range a.configPaths {
-		for _, ext := range configExtensions(a.configType) {
-			candidate := filepath.Join(path, a.configName+"."+ext)
-			if _, err := os.Stat(candidate); err == nil {
-				configFile = candidate
+
+	if a.configFile != "" {
+		if _, err := os.Stat(a.configFile); err != nil {
+			return fmt.Errorf("config file not found: %s", a.configFile)
+		}
+		configFile = a.configFile
+		if a.configType == "" {
+			ext := strings.TrimPrefix(filepath.Ext(configFile), ".")
+			if ext != "" {
+				a.configType = strings.ToLower(ext)
+			} else {
+				a.configType = "yaml"
+			}
+		}
+	} else {
+		if a.configName == "" {
+			return fmt.Errorf("config name not set")
+		}
+		for _, path := range a.configPaths {
+			for _, ext := range configExtensions(a.configType) {
+				candidate := filepath.Join(path, a.configName+"."+ext)
+				if _, err := os.Stat(candidate); err == nil {
+					configFile = candidate
+					break
+				}
+			}
+			if configFile != "" {
 				break
 			}
 		}
-		if configFile != "" {
-			break
+		if configFile == "" {
+			return fmt.Errorf("config file not found: %s.%s", a.configName, a.configType)
 		}
-	}
-
-	if configFile == "" {
-		return fmt.Errorf("config file not found: %s.%s", a.configName, a.configType)
 	}
 
 	data, err := os.ReadFile(configFile)
@@ -149,7 +173,6 @@ func (a *Adder) ReadInConfig() error {
 		if err := yaml.Unmarshal(data, &a.configValues); err != nil {
 			return fmt.Errorf("failed to parse yaml: %w", err)
 		}
-		insensitiviseMap(a.configValues)
 	default:
 		return fmt.Errorf("unsupported config type: %s", a.configType)
 	}
@@ -215,8 +238,8 @@ func (a *Adder) unmarshalWithPath(data map[string]any, v any, prefix string) err
 			continue
 		}
 
-		// Get value from config
-		configVal, exists := data[fieldName]
+		// Get value from config (case-insensitive lookup)
+		configVal, exists := caseInsensitiveLookup(data, fieldName)
 		if !exists {
 			// Still recurse into struct fields to check env bindings
 			if fieldValue.Kind() == reflect.Struct {
@@ -301,6 +324,20 @@ func (a *Adder) setFieldValue(field reflect.Value, value any, keyPath string) er
 		if b, ok := value.(bool); ok {
 			field.SetBool(b)
 		}
+	case reflect.Map:
+		m, ok := value.(map[string]any)
+		if !ok {
+			return nil
+		}
+		mapType := field.Type()
+		if mapType.Key().Kind() != reflect.String || mapType.Elem().Kind() != reflect.String {
+			return fmt.Errorf("unsupported map type %s at %s: only map[string]string is supported", mapType, keyPath)
+		}
+		newMap := reflect.MakeMap(mapType)
+		for k, v := range m {
+			newMap.SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(fmt.Sprintf("%v", v)))
+		}
+		field.Set(newMap)
 	case reflect.Slice:
 		return a.setSliceField(field, value, keyPath)
 	}
@@ -330,28 +367,17 @@ func setFieldFromString(field reflect.Value, value string) error {
 	return nil
 }
 
-func insensitiviseMap(m map[string]any) {
-	for key, val := range m {
-		switch v := val.(type) {
-		case map[string]any:
-			insensitiviseMap(v)
-		case []any:
-			insensitiviseSlice(v)
-		}
-		lower := strings.ToLower(key)
-		if key != lower {
-			delete(m, key)
-			m[lower] = val
+func caseInsensitiveLookup(m map[string]any, key string) (any, bool) {
+	if v, ok := m[key]; ok {
+		return v, true
+	}
+	lower := strings.ToLower(key)
+	for k, v := range m {
+		if strings.ToLower(k) == lower {
+			return v, true
 		}
 	}
-}
-
-func insensitiviseSlice(s []any) {
-	for _, item := range s {
-		if m, ok := item.(map[string]any); ok {
-			insensitiviseMap(m)
-		}
-	}
+	return nil, false
 }
 
 func (a *Adder) setSliceField(field reflect.Value, value any, keyPath string) error {

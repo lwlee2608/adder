@@ -465,3 +465,147 @@ func TestUnmarshalStringArrayFromYAML(t *testing.T) {
 	require.NoError(t, a.Unmarshal(&cfg))
 	assert.Equal(t, []string{"https://app.local", "https://admin.local"}, cfg.App.AllowedOrigins)
 }
+
+func TestUnmarshalMapStringString(t *testing.T) {
+	type server struct {
+		Name    string
+		URL     string            `mapstructure:"url"`
+		Headers map[string]string `mapstructure:"headers"`
+	}
+	type config struct {
+		Servers []server
+	}
+
+	a := newTestAdder(t, `
+servers:
+  - name: "api"
+    url: "https://api.example.com"
+    headers:
+      Authorization: "Bearer token"
+      X-Custom: "value"
+  - name: "plain"
+    url: "https://plain.example.com"
+`)
+
+	var cfg config
+	require.NoError(t, a.Unmarshal(&cfg))
+
+	require.Len(t, cfg.Servers, 2)
+	assert.Equal(t, "api", cfg.Servers[0].Name)
+	assert.Equal(t, map[string]string{
+		"Authorization": "Bearer token",
+		"X-Custom":      "value",
+	}, cfg.Servers[0].Headers)
+	assert.Equal(t, "plain", cfg.Servers[1].Name)
+	assert.Nil(t, cfg.Servers[1].Headers)
+}
+
+func TestUnmarshalMapStringStringTopLevel(t *testing.T) {
+	type config struct {
+		Labels map[string]string
+	}
+
+	a := newTestAdder(t, `
+labels:
+  env: production
+  team: backend
+`)
+
+	var cfg config
+	require.NoError(t, a.Unmarshal(&cfg))
+	assert.Equal(t, map[string]string{
+		"env":  "production",
+		"team": "backend",
+	}, cfg.Labels)
+}
+
+func TestUnmarshalMapStringStringNonStringValues(t *testing.T) {
+	type config struct {
+		Headers map[string]string
+	}
+
+	a := newTestAdder(t, `
+headers:
+  X-Retry-Count: 3
+  X-Debug: true
+  X-Ratio: 3.14
+  X-Name: hello
+`)
+
+	var cfg config
+	require.NoError(t, a.Unmarshal(&cfg))
+	assert.Equal(t, map[string]string{
+		"X-Retry-Count": "3",
+		"X-Debug":       "true",
+		"X-Ratio":       "3.14",
+		"X-Name":        "hello",
+	}, cfg.Headers)
+}
+
+func TestUnmarshalUnsupportedMapType(t *testing.T) {
+	type config struct {
+		Counts map[string]int64
+	}
+
+	a := newTestAdder(t, `
+counts:
+  a: 1
+  b: 2
+`)
+
+	var cfg config
+	err := a.Unmarshal(&cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported map type")
+}
+
+func TestSetConfigFile(t *testing.T) {
+	t.Run("exact yaml path", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "custom-config.yaml")
+		require.NoError(t, os.WriteFile(path, []byte("log:\n  level: debug\n"), 0o644))
+
+		a := New()
+		a.SetConfigFile(path)
+		require.NoError(t, a.ReadInConfig())
+
+		var cfg testConfig
+		require.NoError(t, a.Unmarshal(&cfg))
+		assert.Equal(t, "debug", cfg.Log.Level)
+	})
+
+	t.Run("extensionless path defaults to yaml", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "config")
+		require.NoError(t, os.WriteFile(path, []byte("log:\n  level: warn\n"), 0o644))
+
+		a := New()
+		a.SetConfigFile(path)
+		require.NoError(t, a.ReadInConfig())
+
+		var cfg testConfig
+		require.NoError(t, a.Unmarshal(&cfg))
+		assert.Equal(t, "warn", cfg.Log.Level)
+	})
+
+	t.Run("missing file returns error", func(t *testing.T) {
+		a := New()
+		a.SetConfigFile("/nonexistent/config.yaml")
+		err := a.ReadInConfig()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "config file not found")
+	})
+}
+
+func newTestAdder(t *testing.T, content string) *Adder {
+	t.Helper()
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "application.yaml"), []byte(content), 0o644))
+
+	a := New()
+	a.SetConfigName("application")
+	a.SetConfigType("yaml")
+	a.AddConfigPath(dir)
+	require.NoError(t, a.ReadInConfig())
+	return a
+}
