@@ -326,21 +326,21 @@ func (a *Adder) setFieldValue(field reflect.Value, value any, keyPath string) er
 			field.SetBool(b)
 		}
 	case reflect.Map:
-		if m, ok := value.(map[string]any); ok {
-			mapType := field.Type()
-			newMap := reflect.MakeMap(mapType)
-			for k, v := range m {
-				mapKey := reflect.ValueOf(k)
-				if mapType.Elem().Kind() == reflect.String {
-					if s, ok := v.(string); ok {
-						newMap.SetMapIndex(mapKey, reflect.ValueOf(s))
-					}
-				} else {
-					newMap.SetMapIndex(mapKey, reflect.ValueOf(v))
-				}
-			}
-			field.Set(newMap)
+		m, ok := value.(map[string]any)
+		if !ok {
+			return nil
 		}
+		mapType := field.Type()
+		if mapType.Key().Kind() != reflect.String || mapType.Elem().Kind() != reflect.String {
+			return fmt.Errorf("unsupported map type %s at %s: only map[string]string is supported", mapType, keyPath)
+		}
+		newMap := reflect.MakeMap(mapType)
+		for k, v := range m {
+			if s, ok := v.(string); ok {
+				newMap.SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(s))
+			}
+		}
+		field.Set(newMap)
 	case reflect.Slice:
 		return a.setSliceField(field, value, keyPath)
 	}

@@ -519,6 +519,23 @@ labels:
 	}, cfg.Labels)
 }
 
+func TestUnmarshalUnsupportedMapType(t *testing.T) {
+	type config struct {
+		Counts map[string]int64
+	}
+
+	a := newTestAdder(t, `
+counts:
+  a: 1
+  b: 2
+`)
+
+	var cfg config
+	err := a.Unmarshal(&cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported map type")
+}
+
 func TestSetConfigFile(t *testing.T) {
 	t.Run("exact yaml path", func(t *testing.T) {
 		dir := t.TempDir()
