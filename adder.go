@@ -122,7 +122,7 @@ func ReadInConfig() error { return defaultAdder.ReadInConfig() }
 // ReadInConfig searches the configured paths for the config file and loads it.
 // Struct field matching is case-insensitive, so YAML keys like "baseURL", "baseUrl",
 // and "baseurl" all match the same struct field. Map keys preserve their original casing.
-// [Adder.SetConfigName], [Adder.SetConfigType], and [Adder.AddConfigPath] must be called before this.
+// Either [Adder.SetConfigFile] or [Adder.SetConfigName]/[Adder.SetConfigType]/[Adder.AddConfigPath] must be called before this.
 func (a *Adder) ReadInConfig() error {
 	var configFile string
 
@@ -335,9 +335,7 @@ func (a *Adder) setFieldValue(field reflect.Value, value any, keyPath string) er
 		}
 		newMap := reflect.MakeMap(mapType)
 		for k, v := range m {
-			if s, ok := v.(string); ok {
-				newMap.SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(s))
-			}
+			newMap.SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(fmt.Sprintf("%v", v)))
 		}
 		field.Set(newMap)
 	case reflect.Slice:

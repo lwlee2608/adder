@@ -519,6 +519,29 @@ labels:
 	}, cfg.Labels)
 }
 
+func TestUnmarshalMapStringStringNonStringValues(t *testing.T) {
+	type config struct {
+		Headers map[string]string
+	}
+
+	a := newTestAdder(t, `
+headers:
+  X-Retry-Count: 3
+  X-Debug: true
+  X-Ratio: 3.14
+  X-Name: hello
+`)
+
+	var cfg config
+	require.NoError(t, a.Unmarshal(&cfg))
+	assert.Equal(t, map[string]string{
+		"X-Retry-Count": "3",
+		"X-Debug":       "true",
+		"X-Ratio":       "3.14",
+		"X-Name":        "hello",
+	}, cfg.Headers)
+}
+
 func TestUnmarshalUnsupportedMapType(t *testing.T) {
 	type config struct {
 		Counts map[string]int64
