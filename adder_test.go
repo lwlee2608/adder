@@ -680,6 +680,47 @@ timeout: not-a-duration
 	assert.Contains(t, err.Error(), "invalid duration")
 }
 
+func TestDurationEnvOverrideInvalidValue(t *testing.T) {
+	type httpConfig struct {
+		ReadTimeout time.Duration `mapstructure:"read_timeout"`
+	}
+	type config struct {
+		Http httpConfig
+	}
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "application.yaml"), []byte("http:\n  read_timeout: 5s\n"), 0o644))
+	t.Setenv("HTTP_READ_TIMEOUT", "nope")
+
+	a := New()
+	a.SetConfigName("application")
+	a.SetConfigType("yaml")
+	a.AddConfigPath(dir)
+	a.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	a.AutomaticEnv()
+	require.NoError(t, a.ReadInConfig())
+
+	var cfg config
+	err := a.Unmarshal(&cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid duration at http.read_timeout")
+}
+
+func TestUnmarshalDurationUnsupportedType(t *testing.T) {
+	type config struct {
+		Timeout time.Duration
+	}
+
+	a := newTestAdder(t, `
+timeout: true
+`)
+
+	var cfg config
+	err := a.Unmarshal(&cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot convert bool to time.Duration")
+}
+
 func TestUnmarshalDurationSlice(t *testing.T) {
 	type config struct {
 		Backoffs []time.Duration

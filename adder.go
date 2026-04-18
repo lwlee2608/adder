@@ -235,7 +235,7 @@ func (a *Adder) unmarshalWithPath(data map[string]any, v any, prefix string) err
 
 		// Check for env override
 		if envVal := a.getEnvValue(fullKey); envVal != "" {
-			if err := setFieldFromString(fieldValue, envVal); err != nil {
+			if err := setFieldFromString(fieldValue, envVal, fullKey); err != nil {
 				return err
 			}
 			continue
@@ -351,7 +351,7 @@ func (a *Adder) setFieldValue(field reflect.Value, value any, keyPath string) er
 	return nil
 }
 
-func setFieldFromString(field reflect.Value, value string) error {
+func setFieldFromString(field reflect.Value, value string, keyPath string) error {
 	switch field.Kind() {
 	case reflect.String:
 		field.SetString(value)
@@ -359,7 +359,7 @@ func setFieldFromString(field reflect.Value, value string) error {
 		if field.Type() == durationType {
 			d, err := time.ParseDuration(value)
 			if err != nil {
-				return err
+				return fmt.Errorf("invalid duration at %s: %w", keyPath, err)
 			}
 			field.SetInt(int64(d))
 			return nil
@@ -395,6 +395,8 @@ func setDurationField(field reflect.Value, value any, keyPath string) error {
 		field.SetInt(v)
 	case float64:
 		field.SetInt(int64(v))
+	default:
+		return fmt.Errorf("cannot convert %T to time.Duration at %s", value, keyPath)
 	}
 	return nil
 }
