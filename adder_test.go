@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -595,6 +596,109 @@ func TestSetConfigFile(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "config file not found")
 	})
+}
+
+func TestUnmarshalDurationFromYAML(t *testing.T) {
+	type httpConfig struct {
+		ReadTimeout  time.Duration `mapstructure:"read_timeout"`
+		WriteTimeout time.Duration `mapstructure:"write_timeout"`
+		IdleTimeout  time.Duration `mapstructure:"idle_timeout"`
+	}
+	type config struct {
+		Http httpConfig
+	}
+
+	a := newTestAdder(t, `
+http:
+  read_timeout: 5s
+  write_timeout: 1m30s
+  idle_timeout: 2h
+`)
+
+	var cfg config
+	require.NoError(t, a.Unmarshal(&cfg))
+	assert.Equal(t, 5*time.Second, cfg.Http.ReadTimeout)
+	assert.Equal(t, 90*time.Second, cfg.Http.WriteTimeout)
+	assert.Equal(t, 2*time.Hour, cfg.Http.IdleTimeout)
+}
+
+func TestUnmarshalDurationNumericNanoseconds(t *testing.T) {
+	type config struct {
+		Timeout time.Duration
+	}
+
+	a := newTestAdder(t, `
+timeout: 1500000000
+`)
+
+	var cfg config
+	require.NoError(t, a.Unmarshal(&cfg))
+	assert.Equal(t, 1500*time.Millisecond, cfg.Timeout)
+}
+
+func TestDurationEnvOverride(t *testing.T) {
+	type httpConfig struct {
+		ReadTimeout time.Duration `mapstructure:"read_timeout"`
+	}
+	type config struct {
+		Http httpConfig
+	}
+
+	dir := t.TempDir()
+	content := `http:
+  read_timeout: 5s
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "application.yaml"), []byte(content), 0o644))
+	t.Setenv("HTTP_READ_TIMEOUT", "250ms")
+
+	a := New()
+	a.SetConfigName("application")
+	a.SetConfigType("yaml")
+	a.AddConfigPath(dir)
+	a.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	a.AutomaticEnv()
+
+	require.NoError(t, a.ReadInConfig())
+
+	var cfg config
+	require.NoError(t, a.Unmarshal(&cfg))
+	assert.Equal(t, 250*time.Millisecond, cfg.Http.ReadTimeout)
+}
+
+func TestUnmarshalDurationInvalidString(t *testing.T) {
+	type config struct {
+		Timeout time.Duration
+	}
+
+	a := newTestAdder(t, `
+timeout: not-a-duration
+`)
+
+	var cfg config
+	err := a.Unmarshal(&cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid duration")
+}
+
+func TestUnmarshalDurationSlice(t *testing.T) {
+	type config struct {
+		Backoffs []time.Duration
+	}
+
+	a := newTestAdder(t, `
+backoffs:
+  - 100ms
+  - 500ms
+  - 2s
+`)
+
+	var cfg config
+	require.NoError(t, a.Unmarshal(&cfg))
+	assert.Equal(t, []time.Duration{
+		100 * time.Millisecond,
+		500 * time.Millisecond,
+		2 * time.Second,
+	}, cfg.Backoffs)
 }
 
 func newTestAdder(t *testing.T, content string) *Adder {

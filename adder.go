@@ -22,9 +22,12 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
+
+var durationType = reflect.TypeOf(time.Duration(0))
 
 // Adder manages configuration loaded from YAML files with optional environment
 // variable overrides. Use [New] to create an instance, or use the package-level
@@ -293,6 +296,9 @@ func (a *Adder) setFieldValue(field reflect.Value, value any, keyPath string) er
 			field.SetString(s)
 		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		if field.Type() == durationType {
+			return setDurationField(field, value, keyPath)
+		}
 		switch v := value.(type) {
 		case int:
 			field.SetInt(int64(v))
@@ -350,6 +356,14 @@ func setFieldFromString(field reflect.Value, value string) error {
 	case reflect.String:
 		field.SetString(value)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		if field.Type() == durationType {
+			d, err := time.ParseDuration(value)
+			if err != nil {
+				return err
+			}
+			field.SetInt(int64(d))
+			return nil
+		}
 		i, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
 			return err
@@ -363,6 +377,24 @@ func setFieldFromString(field reflect.Value, value string) error {
 		field.SetUint(u)
 	case reflect.Bool:
 		field.SetBool(value == "true" || value == "1")
+	}
+	return nil
+}
+
+func setDurationField(field reflect.Value, value any, keyPath string) error {
+	switch v := value.(type) {
+	case string:
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("invalid duration at %s: %w", keyPath, err)
+		}
+		field.SetInt(int64(d))
+	case int:
+		field.SetInt(int64(v))
+	case int64:
+		field.SetInt(v)
+	case float64:
+		field.SetInt(int64(v))
 	}
 	return nil
 }
@@ -397,6 +429,12 @@ func (a *Adder) setSliceField(field reflect.Value, value any, keyPath string) er
 				elem.SetString(s)
 			}
 		case reflect.Int, reflect.Int64:
+			if elemType == durationType {
+				if err := setDurationField(elem, item, keyPath); err != nil {
+					return err
+				}
+				continue
+			}
 			switch v := item.(type) {
 			case int:
 				elem.SetInt(int64(v))
