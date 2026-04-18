@@ -1,5 +1,11 @@
 # adder
 
+[![Release](https://img.shields.io/github/v/tag/lwlee2608/adder?label=release&sort=semver)](https://github.com/lwlee2608/adder/tags)
+[![CI](https://github.com/lwlee2608/adder/actions/workflows/ci.yml/badge.svg)](https://github.com/lwlee2608/adder/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/lwlee2608/adder.svg)](https://pkg.go.dev/github.com/lwlee2608/adder)
+[![Go Report Card](https://goreportcard.com/badge/github.com/lwlee2608/adder)](https://goreportcard.com/report/github.com/lwlee2608/adder)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 A lightweight configuration library for Go, inspired by [viper](https://github.com/spf13/viper).
 
 Adder reads YAML config files and unmarshals them into Go structs, with support for environment variable overrides.
