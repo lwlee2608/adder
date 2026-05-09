@@ -30,7 +30,7 @@ Adder reads YAML into Go structs and overlays env vars. It does **case-insensiti
 
    This applies recursively at every nesting level — `auth.session.ttl` resolves each segment the same way.
 
-2. **Avoid snake_case in YAML.** A snake_case key like `session_ttl` will **never** bind to `SessionTTL` automatically — adder compares `sessionttl` to `session_ttl` and finds no match, so the field silently stays at its zero value (e.g. `time.Duration(0)`, which means "expires immediately" for TTLs). If you must use snake_case for readability, every such field requires an explicit `mapstructure` tag:
+2. **Prefer not to use snake_case in YAML.** A snake_case key like `session_ttl` will **never** bind to `SessionTTL` automatically — adder compares `sessionttl` to `session_ttl` and finds no match, so the field silently stays at its zero value (e.g. `time.Duration(0)`, which means "expires immediately" for TTLs). If you must use snake_case for readability, every such field requires an explicit `mapstructure` tag:
 
    ```go
    // only if you insist on snake_case YAML
