@@ -66,6 +66,18 @@ Adder reads YAML into Go structs and overlays env vars. It does **case-insensiti
 
    If you can rename the env var to match the auto pattern, do that instead and drop the `BindEnv`.
 
+6. **Co-locate config structs with the package they configure.** Each package owns its own config type (`internal/auth/config.go` → `auth.Config`, `internal/db/config.go` → `db.Config`). The cmd-level `Config` is just composition.
+
+   ```go
+   // cmd/myapp/config.go
+   type Config struct {
+       Auth auth.Config
+       DB   db.Config
+   }
+   ```
+
+   Adder binds either way — this is for code organization: package owns its fields, masking tags, and any `Enabled()`/`Validate()` helpers, and `cmd/<app>/config.go` stays short. Config types used only by cmd wiring (e.g. `LogConfig`) can stay in `cmd/<app>/`.
+
 ## Verification procedure
 
 After adding or changing a config field (these checks apply at every nesting level — verify the deepest field, not just the top-level struct):
