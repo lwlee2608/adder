@@ -742,6 +742,85 @@ backoffs:
 	}, cfg.Backoffs)
 }
 
+func TestUnmarshalFloatFromYAML(t *testing.T) {
+	type config struct {
+		Ratio     float64
+		Threshold float32
+		Scale     float64
+	}
+
+	a := newTestAdder(t, `
+ratio: 0.75
+threshold: 1.5
+scale: 2
+`)
+
+	var cfg config
+	require.NoError(t, a.Unmarshal(&cfg))
+	assert.Equal(t, 0.75, cfg.Ratio)
+	assert.Equal(t, float32(1.5), cfg.Threshold)
+	assert.Equal(t, 2.0, cfg.Scale)
+}
+
+func TestFloatEnvOverride(t *testing.T) {
+	type config struct {
+		Ratio float64
+	}
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "application.yaml"), []byte("ratio: 0.75\n"), 0o644))
+	t.Setenv("RATIO", "0.25")
+
+	a := New()
+	a.SetConfigName("application")
+	a.SetConfigType("yaml")
+	a.AddConfigPath(dir)
+	a.AutomaticEnv()
+
+	require.NoError(t, a.ReadInConfig())
+
+	var cfg config
+	require.NoError(t, a.Unmarshal(&cfg))
+	assert.Equal(t, 0.25, cfg.Ratio)
+}
+
+func TestFloatEnvOverrideInvalidValue(t *testing.T) {
+	type config struct {
+		Ratio float64
+	}
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "application.yaml"), []byte("ratio: 0.75\n"), 0o644))
+	t.Setenv("RATIO", "not-a-float")
+
+	a := New()
+	a.SetConfigName("application")
+	a.SetConfigType("yaml")
+	a.AddConfigPath(dir)
+	a.AutomaticEnv()
+	require.NoError(t, a.ReadInConfig())
+
+	var cfg config
+	require.Error(t, a.Unmarshal(&cfg))
+}
+
+func TestUnmarshalFloatSlice(t *testing.T) {
+	type config struct {
+		Weights []float64
+	}
+
+	a := newTestAdder(t, `
+weights:
+  - 0.1
+  - 0.5
+  - 1
+`)
+
+	var cfg config
+	require.NoError(t, a.Unmarshal(&cfg))
+	assert.Equal(t, []float64{0.1, 0.5, 1}, cfg.Weights)
+}
+
 func newTestAdder(t *testing.T, content string) *Adder {
 	t.Helper()
 	dir := t.TempDir()

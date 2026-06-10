@@ -326,6 +326,17 @@ func (a *Adder) setFieldValue(field reflect.Value, value any, keyPath string) er
 				field.SetUint(uint64(v))
 			}
 		}
+	case reflect.Float32, reflect.Float64:
+		switch v := value.(type) {
+		case float64:
+			field.SetFloat(v)
+		case float32:
+			field.SetFloat(float64(v))
+		case int:
+			field.SetFloat(float64(v))
+		case int64:
+			field.SetFloat(float64(v))
+		}
 	case reflect.Bool:
 		if b, ok := value.(bool); ok {
 			field.SetBool(b)
@@ -375,6 +386,12 @@ func setFieldFromString(field reflect.Value, value string, keyPath string) error
 			return err
 		}
 		field.SetUint(u)
+	case reflect.Float32, reflect.Float64:
+		f, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return err
+		}
+		field.SetFloat(f)
 	case reflect.Bool:
 		field.SetBool(value == "true" || value == "1")
 	}
@@ -442,6 +459,13 @@ func (a *Adder) setSliceField(field reflect.Value, value any, keyPath string) er
 				elem.SetInt(int64(v))
 			case float64:
 				elem.SetInt(int64(v))
+			}
+		case reflect.Float32, reflect.Float64:
+			switch v := item.(type) {
+			case float64:
+				elem.SetFloat(v)
+			case int:
+				elem.SetFloat(float64(v))
 			}
 		case reflect.Struct:
 			if m, ok := item.(map[string]any); ok {
