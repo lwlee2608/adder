@@ -85,7 +85,7 @@ After adding or changing a config field (these checks apply at every nesting lev
 1. **Lowercase-match check** — does `strings.ToLower(fieldName)` equal the YAML key exactly? If not, you need a `mapstructure` tag, or you should rename the YAML key.
 2. **Default check** — is the default value in `application.yml`? Run the binary with no env overrides and confirm the field has the expected value. Don't rely on memory — log it, e.g. `log.Printf("%+v", cfg)`.
 3. **Env override check** — if the field is meant to be env-overridable, set the auto-derived env var (`UPPER_CASE_WITH_UNDERSCORES`) and confirm it overrides the YAML default. Same rule: log the loaded value, don't assume.
-4. **Zero-value trap** — for `time.Duration`, `int`, or `bool` fields, a binding miss looks identical to "configured as 0/false". Always test a non-zero default actually loads.
+4. **Zero-value trap** — for `time.Duration`, `int`, `float64`, or `bool` fields, a binding miss looks identical to "configured as 0/false". Always test a non-zero default actually loads.
 
 ## Common mistakes to watch for
 
