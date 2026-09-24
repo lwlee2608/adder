@@ -1,0 +1,7 @@
+log:
+  level: info
+clients:
+  - name: foo
+    token: t1
+  - name: bar
+    token: t2

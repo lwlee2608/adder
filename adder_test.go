@@ -833,3 +833,361 @@ func newTestAdder(t *testing.T, content string) *Adder {
 	require.NoError(t, a.ReadInConfig())
 	return a
 }
+
+type sliceEnvAuth struct {
+	Id     string
+	Secret string
+}
+
+type sliceEnvClient struct {
+	Name  string
+	Token string
+	Auth  sliceEnvAuth
+}
+
+type sliceEnvProxy struct {
+	Clients []sliceEnvClient
+}
+
+type sliceEnvConfig struct {
+	Name    string
+	Modes   []int
+	Paths   []string
+	Clients []sliceEnvClient
+	Proxy   sliceEnvProxy
+}
+
+func newSliceEnvAdder(t *testing.T, content string) *Adder {
+	t.Helper()
+	a := newTestAdder(t, content)
+	a.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	a.AutomaticEnv()
+	return a
+}
+
+const sliceEnvYAML = `name: Steve
+modes:
+  - 1
+  - 2
+  - 3
+clients:
+  - name: foo
+    token: t1
+  - name: bar
+    token: t2
+proxy:
+  clients:
+    - name: proxy_foo
+`
+
+func TestSliceIndexedEnvOverride(t *testing.T) {
+	a := newSliceEnvAdder(t, sliceEnvYAML)
+
+	t.Setenv("NAME", "Steven")
+	t.Setenv("MODES_2", "300")
+	t.Setenv("CLIENTS_1_NAME", "baz")
+	t.Setenv("CLIENTS_0_AUTH_ID", "kc-0")
+	t.Setenv("PROXY_CLIENTS_0_NAME", "ProxyFoo")
+
+	var cfg sliceEnvConfig
+	require.NoError(t, a.Unmarshal(&cfg))
+
+	assert.Equal(t, "Steven", cfg.Name)
+	assert.Equal(t, []int{1, 2, 300}, cfg.Modes)
+	require.Len(t, cfg.Clients, 2)
+	assert.Equal(t, "foo", cfg.Clients[0].Name)
+	assert.Equal(t, "kc-0", cfg.Clients[0].Auth.Id)
+	assert.Equal(t, "baz", cfg.Clients[1].Name)
+	assert.Equal(t, "t2", cfg.Clients[1].Token)
+	require.Len(t, cfg.Proxy.Clients, 1)
+	assert.Equal(t, "ProxyFoo", cfg.Proxy.Clients[0].Name)
+}
+
+func TestSliceIndexedEnvAppendsElements(t *testing.T) {
+	a := newSliceEnvAdder(t, sliceEnvYAML)
+
+	t.Setenv("CLIENTS_2_NAME", "qux")
+	t.Setenv("CLIENTS_2_TOKEN", "t3")
+	t.Setenv("CLIENTS_2_AUTH_SECRET", "s3")
+	t.Setenv("MODES_3", "4")
+
+	var cfg sliceEnvConfig
+	require.NoError(t, a.Unmarshal(&cfg))
+
+	assert.Equal(t, []int{1, 2, 3, 4}, cfg.Modes)
+	require.Len(t, cfg.Clients, 3)
+	assert.Equal(t, "qux", cfg.Clients[2].Name)
+	assert.Equal(t, "t3", cfg.Clients[2].Token)
+	assert.Equal(t, "s3", cfg.Clients[2].Auth.Secret)
+}
+
+func TestSliceFromEnvOnly(t *testing.T) {
+	a := newSliceEnvAdder(t, "name: Steve\n")
+
+	t.Setenv("PATHS_0", "/one")
+	t.Setenv("PATHS_1", "/two/*")
+	t.Setenv("CLIENTS_0_NAME", "foo")
+	t.Setenv("CLIENTS_0_TOKEN", "t1")
+	t.Setenv("CLIENTS_1_NAME", "bar")
+	t.Setenv("CLIENTS_1_AUTH_ID", "id-1")
+	t.Setenv("PROXY_CLIENTS_0_NAME", "ProxyFoo")
+
+	var cfg sliceEnvConfig
+	require.NoError(t, a.Unmarshal(&cfg))
+
+	assert.Equal(t, []string{"/one", "/two/*"}, cfg.Paths)
+	require.Len(t, cfg.Clients, 2)
+	assert.Equal(t, "foo", cfg.Clients[0].Name)
+	assert.Equal(t, "t1", cfg.Clients[0].Token)
+	assert.Equal(t, "bar", cfg.Clients[1].Name)
+	assert.Equal(t, "id-1", cfg.Clients[1].Auth.Id)
+	require.Len(t, cfg.Proxy.Clients, 1)
+	assert.Equal(t, "ProxyFoo", cfg.Proxy.Clients[0].Name)
+	assert.Nil(t, cfg.Modes)
+}
+
+func TestSliceFromEnvStopsAtGap(t *testing.T) {
+	a := newSliceEnvAdder(t, "name: Steve\n")
+
+	t.Setenv("CLIENTS_0_NAME", "first")
+	t.Setenv("CLIENTS_2_NAME", "third")
+
+	var cfg sliceEnvConfig
+	require.NoError(t, a.Unmarshal(&cfg))
+
+	require.Len(t, cfg.Clients, 1)
+	assert.Equal(t, "first", cfg.Clients[0].Name)
+}
+
+func TestSliceUnindexedEnvDoesNotClearSlice(t *testing.T) {
+	a := newSliceEnvAdder(t, sliceEnvYAML)
+
+	t.Setenv("CLIENTS", "whatever")
+	t.Setenv("MODES", "9")
+
+	var cfg sliceEnvConfig
+	require.NoError(t, a.Unmarshal(&cfg))
+
+	assert.Equal(t, []int{1, 2, 3}, cfg.Modes)
+	require.Len(t, cfg.Clients, 2)
+	assert.Equal(t, "t1", cfg.Clients[0].Token)
+	assert.Equal(t, "t2", cfg.Clients[1].Token)
+}
+
+func TestSliceUnindexedEnvAppliesToEveryElement(t *testing.T) {
+	a := newSliceEnvAdder(t, sliceEnvYAML)
+
+	t.Setenv("CLIENTS_TOKEN", "from-env")
+
+	var cfg sliceEnvConfig
+	require.NoError(t, a.Unmarshal(&cfg))
+
+	require.Len(t, cfg.Clients, 2)
+	assert.Equal(t, "from-env", cfg.Clients[0].Token)
+	assert.Equal(t, "from-env", cfg.Clients[1].Token)
+}
+
+func TestSliceIndexedEnvBeatsUnindexed(t *testing.T) {
+	a := newSliceEnvAdder(t, sliceEnvYAML)
+
+	t.Setenv("CLIENTS_TOKEN", "from-env")
+	t.Setenv("CLIENTS_1_TOKEN", "only-second")
+
+	var cfg sliceEnvConfig
+	require.NoError(t, a.Unmarshal(&cfg))
+
+	require.Len(t, cfg.Clients, 2)
+	assert.Equal(t, "from-env", cfg.Clients[0].Token)
+	assert.Equal(t, "only-second", cfg.Clients[1].Token)
+}
+
+func TestSliceDefaultsSurviveIndexedEnv(t *testing.T) {
+	a := newSliceEnvAdder(t, "name: Steve\n")
+
+	t.Setenv("CLIENTS_0_NAME", "override")
+
+	cfg := sliceEnvConfig{
+		Clients: []sliceEnvClient{
+			{Name: "d1", Token: "k1"},
+			{Name: "d2", Token: "k2"},
+		},
+	}
+	require.NoError(t, a.Unmarshal(&cfg))
+
+	require.Len(t, cfg.Clients, 2)
+	assert.Equal(t, "override", cfg.Clients[0].Name)
+	assert.Equal(t, "k1", cfg.Clients[0].Token)
+	assert.Equal(t, "d2", cfg.Clients[1].Name)
+}
+
+func TestSliceIndexedBindEnv(t *testing.T) {
+	a := newTestAdder(t, "name: Steve\n")
+	require.NoError(t, a.BindEnv("clients.0.token", "FIRST_CLIENT_TOKEN"))
+	require.NoError(t, a.BindEnv("paths.0", "FIRST_PATH"))
+
+	t.Setenv("FIRST_CLIENT_TOKEN", "bound-token")
+	t.Setenv("FIRST_PATH", "/one")
+
+	var cfg sliceEnvConfig
+	require.NoError(t, a.Unmarshal(&cfg))
+
+	require.Len(t, cfg.Clients, 1)
+	assert.Equal(t, "bound-token", cfg.Clients[0].Token)
+	assert.Equal(t, []string{"/one"}, cfg.Paths)
+}
+
+func TestSliceIndexedEnvDurationAndEmptyList(t *testing.T) {
+	type config struct {
+		Timeouts []time.Duration
+		Empty    []string
+	}
+
+	a := newSliceEnvAdder(t, "timeouts:\n  - 1s\n  - 2s\nempty: []\n")
+
+	t.Setenv("TIMEOUTS_1", "30s")
+	t.Setenv("TIMEOUTS_2", "1m")
+
+	var cfg config
+	require.NoError(t, a.Unmarshal(&cfg))
+
+	assert.Equal(t, []time.Duration{time.Second, 30 * time.Second, time.Minute}, cfg.Timeouts)
+	assert.Equal(t, []string{}, cfg.Empty)
+}
+
+func TestNumericFieldNameIsNotASliceIndex(t *testing.T) {
+	a := newSliceEnvAdder(t, "http:\n  \"500\":\n    timeout: 1\n")
+
+	t.Setenv("HTTP_TIMEOUT", "99")
+
+	var cfg struct {
+		Http struct {
+			Status struct {
+				Timeout int
+			} `mapstructure:"500"`
+		}
+	}
+	require.NoError(t, a.Unmarshal(&cfg))
+
+	assert.Equal(t, 1, cfg.Http.Status.Timeout)
+}
+
+func TestUnindexedEnvDoesNotAppendNestedElements(t *testing.T) {
+	a := newSliceEnvAdder(t, "clients:\n  - name: foo\n  - name: bar\n")
+
+	t.Setenv("CLIENTS_TAGS_0", "ignored")
+	t.Setenv("CLIENTS_SUBS_0_NAME", "ignored")
+	t.Setenv("CLIENTS_SUBS_NAME", "shared")
+	t.Setenv("CLIENTS_1_TAGS_0", "second-only")
+	t.Setenv("CLIENTS_1_SUBS_0_ID", "s1")
+
+	var cfg struct {
+		Clients []struct {
+			Name string
+			Tags []string
+			Subs []struct{ Name, Id string }
+		}
+	}
+	require.NoError(t, a.Unmarshal(&cfg))
+
+	require.Len(t, cfg.Clients, 2)
+	assert.Empty(t, cfg.Clients[0].Tags)
+	assert.Empty(t, cfg.Clients[0].Subs)
+	assert.Equal(t, []string{"second-only"}, cfg.Clients[1].Tags)
+	require.Len(t, cfg.Clients[1].Subs, 1)
+	assert.Equal(t, "shared", cfg.Clients[1].Subs[0].Name)
+	assert.Equal(t, "s1", cfg.Clients[1].Subs[0].Id)
+}
+
+func TestEnvMatchingStructKeyKeepsConfig(t *testing.T) {
+	a := newSliceEnvAdder(t, "user:\n  name: foo\nclients:\n  - auth:\n      id: a1\n")
+
+	t.Setenv("USER", "someone")
+	t.Setenv("CLIENTS_AUTH", "x")
+
+	var cfg struct {
+		User    struct{ Name string }
+		Clients []sliceEnvClient
+	}
+	require.NoError(t, a.Unmarshal(&cfg))
+
+	assert.Equal(t, "foo", cfg.User.Name)
+	require.Len(t, cfg.Clients, 1)
+	assert.Equal(t, "a1", cfg.Clients[0].Auth.Id)
+}
+
+func TestUnknownIndexedEnvDoesNotAppendElement(t *testing.T) {
+	a := newSliceEnvAdder(t, sliceEnvYAML)
+
+	t.Setenv("CLIENTS_2_TOKNE", "typo")
+
+	var cfg sliceEnvConfig
+	require.NoError(t, a.Unmarshal(&cfg))
+
+	require.Len(t, cfg.Clients, 2)
+}
+
+func TestMapElementIsNotAppendedFromEnv(t *testing.T) {
+	a := newSliceEnvAdder(t, "name: Steve\n")
+
+	t.Setenv("TAGS_0_FOO", "bar")
+
+	var cfg struct {
+		Tags []map[string]string
+	}
+	require.NoError(t, a.Unmarshal(&cfg))
+
+	assert.Empty(t, cfg.Tags)
+}
+
+type sliceEnvNode struct {
+	Name     string
+	Children []sliceEnvNode
+}
+
+func TestRecursiveSliceElementTypeTerminates(t *testing.T) {
+	a := newSliceEnvAdder(t, "name: Steve\n")
+
+	t.Setenv("NODES_0_NAME", "root")
+
+	var cfg struct {
+		Nodes []sliceEnvNode
+	}
+	require.NoError(t, a.Unmarshal(&cfg))
+
+	require.Len(t, cfg.Nodes, 1)
+	assert.Equal(t, "root", cfg.Nodes[0].Name)
+}
+
+func TestRecursiveSliceElementFoundBelowItself(t *testing.T) {
+	a := newSliceEnvAdder(t, "name: Steve\n")
+
+	t.Setenv("NODES_0_CHILDREN_0_NAME", "leaf")
+
+	var cfg struct {
+		Nodes []sliceEnvNode
+	}
+	require.NoError(t, a.Unmarshal(&cfg))
+
+	require.Len(t, cfg.Nodes, 1)
+	require.Len(t, cfg.Nodes[0].Children, 1)
+	assert.Equal(t, "leaf", cfg.Nodes[0].Children[0].Name)
+}
+
+func TestUnsettableFieldDoesNotAppendElement(t *testing.T) {
+	a := newSliceEnvAdder(t, "name: Steve\n")
+
+	t.Setenv("CLIENTS_0_EXTRA", "oops")
+	t.Setenv("ITEMS_0", "foo")
+
+	var cfg struct {
+		Clients []struct {
+			Name  string
+			Extra *string
+		}
+		Items []any
+	}
+	require.NoError(t, a.Unmarshal(&cfg))
+
+	assert.Empty(t, cfg.Clients)
+	assert.Empty(t, cfg.Items)
+}

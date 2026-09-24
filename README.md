@@ -52,10 +52,63 @@ if err := adder.Unmarshal(&config); err != nil {
 - Case-insensitive YAML key matching
 - YAML configuration with multiple search paths
 - Automatic environment variable overrides via `AutomaticEnv()`
+- Indexed env overrides for slice elements, including elements not in the config file
 - Explicit env var binding via `BindEnv()`
 - `mapstructure` struct tags for custom field mapping
 - Pretty JSON output with sensitive field masking via `PrettyJSON()`
 - Singleton and instance-based usage
+
+## Slices from Environment Variables
+
+Slice elements are addressed by index, so `AutomaticEnv()` and `BindEnv()` reach
+into lists. Indices beyond what the config file contains are appended, which means
+a list can be supplied entirely by the environment.
+
+```yaml
+# application.yaml
+clients:
+  - name: foo
+    token: t1
+  - name: bar
+    token: t2
+```
+
+```go
+type Config struct {
+    Clients []ClientConfig
+    Paths   []string
+}
+
+type ClientConfig struct {
+    Name  string
+    Token string
+    Auth  AuthConfig
+}
+
+type AuthConfig struct {
+    Id string
+}
+```
+
+```bash
+CLIENTS_1_TOKEN=t9      # overrides clients[1].token
+CLIENTS_2_NAME=baz      # appends clients[2]
+CLIENTS_2_AUTH_ID=id-2  # sets clients[2].auth.id
+PATHS_0=/one            # builds paths, absent from application.yaml
+PATHS_1='/two/*'
+```
+
+Notes:
+
+- Appending stops at the first missing index: with `CLIENTS_0_NAME` and `CLIENTS_2_NAME`
+  set, only `clients[0]` is added.
+- Only a variable that maps to a real field appends an element, so a misspelled
+  `CLIENTS_2_TOKNE` is ignored rather than appending a blank client.
+- An unindexed env var for a slice key (`CLIENTS=...`) is ignored; only indexed keys apply.
+- An unindexed env var for a field *inside* a slice element (`CLIENTS_TOKEN=...`) applies
+  to every existing element; an indexed key wins over it for that element. Unindexed keys
+  never append elements.
+- See [`example/env-slice`](example/env-slice/).
 
 ## Mask Sensitive Fields
 

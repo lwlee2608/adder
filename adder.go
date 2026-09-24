@@ -104,6 +104,10 @@ func AutomaticEnv() { defaultAdder.AutomaticEnv() }
 // [Adder.Unmarshal] checks for an environment variable for each config key before
 // using the value from the config file. Use [Adder.SetEnvKeyReplacer] to control how
 // config keys are mapped to environment variable names.
+//
+// Slice elements are addressed by index, so CLIENTS_1_TOKEN overrides
+// clients[1].token. An index beyond the elements in the config file appends a new
+// element, so a list can be defined entirely by the environment.
 func (a *Adder) AutomaticEnv() {
 	a.autoEnv = true
 }
@@ -199,10 +203,10 @@ func Unmarshal(v any) error { return defaultAdder.Unmarshal(v) }
 // the "mapstructure" struct tag. Environment variable overrides are applied
 // during unmarshalling.
 func (a *Adder) Unmarshal(v any) error {
-	return a.unmarshalWithPath(a.configValues, v, "")
+	return a.unmarshalWithPath(a.configValues, v, configKey{})
 }
 
-func (a *Adder) unmarshalWithPath(data map[string]any, v any, prefix string) error {
+func (a *Adder) unmarshalWithPath(data map[string]any, v any, prefix configKey) error {
 	rv := reflect.ValueOf(v)
 	if rv.Kind() != reflect.Ptr || rv.IsNil() {
 		return fmt.Errorf("unmarshal target must be a non-nil pointer")
@@ -228,25 +232,29 @@ func (a *Adder) unmarshalWithPath(data map[string]any, v any, prefix string) err
 			fieldName = tag
 		}
 
-		fullKey := fieldName
-		if prefix != "" {
-			fullKey = prefix + "." + fieldName
-		}
+		fullKey := prefix.child(fieldName)
 
 		// Check for env override
-		if envVal := a.getEnvValue(fullKey); envVal != "" {
-			if err := setFieldFromString(fieldValue, envVal, fullKey); err != nil {
-				return err
+		if settableFromString(fieldValue.Type()) {
+			if envVal := a.getEnvValue(fullKey); envVal != "" {
+				if err := setFieldFromString(fieldValue, envVal, fullKey.path); err != nil {
+					return err
+				}
+				continue
 			}
-			continue
 		}
 
 		// Get value from config (case-insensitive lookup)
 		configVal, exists := caseInsensitiveLookup(data, fieldName)
 		if !exists {
-			// Still recurse into struct fields to check env bindings
-			if fieldValue.Kind() == reflect.Struct {
+			// Still recurse into struct and slice fields to check env bindings
+			switch fieldValue.Kind() {
+			case reflect.Struct:
 				if err := a.unmarshalWithPath(map[string]any{}, fieldValue.Addr().Interface(), fullKey); err != nil {
+					return err
+				}
+			case reflect.Slice:
+				if err := a.setSliceField(fieldValue, nil, fullKey); err != nil {
 					return err
 				}
 			}
@@ -261,7 +269,21 @@ func (a *Adder) unmarshalWithPath(data map[string]any, v any, prefix string) err
 	return nil
 }
 
-func (a *Adder) getEnvValue(key string) string {
+func (a *Adder) getEnvValue(key configKey) string {
+	if v := a.lookupEnvValue(key.path); v != "" {
+		return v
+	}
+
+	// A field inside a slice element also honours the unindexed form, so
+	// CLIENTS_TOKEN applies to every element of clients.
+	if !key.isIndex && key.stripped != key.path {
+		return a.lookupEnvValue(key.stripped)
+	}
+
+	return ""
+}
+
+func (a *Adder) lookupEnvValue(key string) string {
 	lowerKey := strings.ToLower(key)
 
 	// Check explicit bindings first
@@ -281,23 +303,54 @@ func (a *Adder) getEnvValue(key string) string {
 	return ""
 }
 
-func (a *Adder) setFieldValue(field reflect.Value, value any, keyPath string) error {
+// configKey is a config path plus the same path with slice indexes dropped.
+type configKey struct {
+	path     string
+	stripped string
+	isIndex  bool
+}
+
+func (k configKey) child(name string) configKey {
+	return configKey{path: joinKey(k.path, name), stripped: joinKey(k.stripped, name)}
+}
+
+func (k configKey) index(i int) configKey {
+	return configKey{path: joinKey(k.path, strconv.Itoa(i)), stripped: k.stripped, isIndex: true}
+}
+
+func joinKey(prefix, name string) string {
+	if prefix == "" {
+		return name
+	}
+	return prefix + "." + name
+}
+
+func (a *Adder) setFieldValue(field reflect.Value, value any, keyPath configKey) error {
+	// Slices and structs are handled even when absent from the config file, so
+	// that indexed env overrides can still populate them.
+	switch field.Kind() {
+	case reflect.Slice:
+		return a.setSliceField(field, value, keyPath)
+	case reflect.Struct:
+		m, _ := value.(map[string]any)
+		if m == nil {
+			m = map[string]any{}
+		}
+		return a.unmarshalWithPath(m, field.Addr().Interface(), keyPath)
+	}
+
 	if value == nil {
 		return nil
 	}
 
 	switch field.Kind() {
-	case reflect.Struct:
-		if m, ok := value.(map[string]any); ok {
-			return a.unmarshalWithPath(m, field.Addr().Interface(), keyPath)
-		}
 	case reflect.String:
 		if s, ok := value.(string); ok {
 			field.SetString(s)
 		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		if field.Type() == durationType {
-			return setDurationField(field, value, keyPath)
+			return setDurationField(field, value, keyPath.path)
 		}
 		switch v := value.(type) {
 		case int:
@@ -348,15 +401,13 @@ func (a *Adder) setFieldValue(field reflect.Value, value any, keyPath string) er
 		}
 		mapType := field.Type()
 		if mapType.Key().Kind() != reflect.String || mapType.Elem().Kind() != reflect.String {
-			return fmt.Errorf("unsupported map type %s at %s: only map[string]string is supported", mapType, keyPath)
+			return fmt.Errorf("unsupported map type %s at %s: only map[string]string is supported", mapType, keyPath.path)
 		}
 		newMap := reflect.MakeMap(mapType)
 		for k, v := range m {
 			newMap.SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(fmt.Sprintf("%v", v)))
 		}
 		field.Set(newMap)
-	case reflect.Slice:
-		return a.setSliceField(field, value, keyPath)
 	}
 
 	return nil
@@ -431,53 +482,113 @@ func caseInsensitiveLookup(m map[string]any, key string) (any, bool) {
 	return nil, false
 }
 
-func (a *Adder) setSliceField(field reflect.Value, value any, keyPath string) error {
-	slice, ok := value.([]any)
-	if !ok {
+// setSliceField populates a slice field from the config value, applying indexed
+// environment variable overrides (e.g. CLIENTS_0_NAME for clients[0].name).
+// Elements not present in the config file are appended when env vars define
+// them, so a list can be supplied entirely by the environment.
+func (a *Adder) setSliceField(field reflect.Value, value any, keyPath configKey) error {
+	items, fromConfig := value.([]any)
+	elemType := field.Type().Elem()
+
+	length := len(items)
+	// Without a config value the existing field holds caller-supplied
+	// defaults; env overrides must not truncate them.
+	if !fromConfig && field.Len() > length {
+		length = field.Len()
+	}
+	for a.hasEnvForIndex(keyPath, length, elemType) {
+		length++
+	}
+
+	if length == 0 {
+		if fromConfig {
+			field.Set(reflect.MakeSlice(field.Type(), 0, 0))
+		}
 		return nil
 	}
 
-	elemType := field.Type().Elem()
-	newSlice := reflect.MakeSlice(field.Type(), len(slice), len(slice))
+	newSlice := reflect.MakeSlice(field.Type(), length, length)
+	if !fromConfig {
+		reflect.Copy(newSlice, field)
+	}
+	for i := 0; i < length; i++ {
+		var item any
+		if i < len(items) {
+			item = items[i]
+		}
 
-	for i, item := range slice {
 		elem := newSlice.Index(i)
-		switch elemType.Kind() {
-		case reflect.String:
-			if s, ok := item.(string); ok {
-				elem.SetString(s)
+		elemKey := keyPath.index(i)
+
+		switch elem.Kind() {
+		case reflect.Struct, reflect.Slice, reflect.Map:
+			if err := a.setFieldValue(elem, item, elemKey); err != nil {
+				return err
 			}
-		case reflect.Int, reflect.Int64:
-			if elemType == durationType {
-				if err := setDurationField(elem, item, keyPath); err != nil {
+		default:
+			if envVal := a.getEnvValue(elemKey); envVal != "" {
+				if err := setFieldFromString(elem, envVal, elemKey.path); err != nil {
 					return err
 				}
 				continue
 			}
-			switch v := item.(type) {
-			case int:
-				elem.SetInt(int64(v))
-			case float64:
-				elem.SetInt(int64(v))
-			}
-		case reflect.Float32, reflect.Float64:
-			switch v := item.(type) {
-			case float64:
-				elem.SetFloat(v)
-			case int:
-				elem.SetFloat(float64(v))
-			}
-		case reflect.Struct:
-			if m, ok := item.(map[string]any); ok {
-				if err := a.unmarshalWithPath(m, elem.Addr().Interface(), keyPath); err != nil {
-					return err
-				}
+			if err := a.setFieldValue(elem, item, elemKey); err != nil {
+				return err
 			}
 		}
 	}
 
 	field.Set(newSlice)
 	return nil
+}
+
+// hasEnvForIndex reports whether an indexed env var sets a settable field of the
+// element at index. Unindexed fallbacks never count, so they cannot append.
+func (a *Adder) hasEnvForIndex(keyPath configKey, index int, elemType reflect.Type) bool {
+	return a.hasEnvForType(keyPath.index(index), elemType, 0)
+}
+
+// maxProbeSliceDepth stops recursive types like Node{Children []Node}.
+const maxProbeSliceDepth = 8
+
+func (a *Adder) hasEnvForType(key configKey, t reflect.Type, sliceDepth int) bool {
+	switch t.Kind() {
+	case reflect.Struct:
+		for i := 0; i < t.NumField(); i++ {
+			field := t.Field(i)
+			if field.PkgPath != "" {
+				continue
+			}
+
+			name := strings.ToLower(field.Name)
+			if tag := field.Tag.Get("mapstructure"); tag != "" {
+				name = tag
+			}
+			if a.hasEnvForType(key.child(name), field.Type, sliceDepth) {
+				return true
+			}
+		}
+		return false
+	case reflect.Slice:
+		if sliceDepth >= maxProbeSliceDepth {
+			return false
+		}
+		return a.hasEnvForType(key.index(0), t.Elem(), sliceDepth+1)
+	default:
+		return settableFromString(t) && a.lookupEnvValue(key.path) != ""
+	}
+}
+
+// settableFromString must match the kinds setFieldFromString handles.
+func settableFromString(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.String, reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64:
+		return true
+	}
+	return false
 }
 
 func configExtensions(configType string) []string {

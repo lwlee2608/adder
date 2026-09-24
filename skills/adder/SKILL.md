@@ -66,7 +66,18 @@ Adder reads YAML into Go structs and overlays env vars. It does **case-insensiti
 
    If you can rename the env var to match the auto pattern, do that instead and drop the `BindEnv`.
 
-6. **Co-locate config structs with the package they configure.** Each package owns its own config type (`internal/auth/config.go` → `auth.Config`, `internal/db/config.go` → `db.Config`). The cmd-level `Config` is just composition.
+6. **Address slice elements by index in env vars.** A slice field's keyPath gains the element index: `Clients []ClientConfig` → `clients.0.token` → `CLIENTS_0_TOKEN`. An index past the end of the list in `application.yml` appends a new element, so a list can come entirely from env. Appending stops at the first missing index, and an unindexed key (`CLIENTS=...`) is ignored. An unindexed key for a field inside an element (`CLIENTS_TOKEN=...`) still applies to every existing element, with the indexed key winning where both are set.
+
+   ```
+   CLIENTS_1_TOKEN=t9      → clients[1].token    (override)
+   CLIENTS_2_NAME=baz      → clients[2] appended
+   CLIENTS_2_AUTH_ID=id-2  → clients[2].auth.id
+   PATHS_0=/one            → paths[0], no yaml entry needed
+   ```
+
+   Prefer `${VAR}` placeholders in `application.yml` when the list's shape is fixed and only secrets vary — the yaml still documents the shape. Reach for indexed env vars when the number of elements varies per environment.
+
+7. **Co-locate config structs with the package they configure.** Each package owns its own config type (`internal/auth/config.go` → `auth.Config`, `internal/db/config.go` → `db.Config`). The cmd-level `Config` is just composition.
 
    ```go
    // cmd/myapp/config.go
@@ -92,5 +103,6 @@ After adding or changing a config field (these checks apply at every nesting lev
 - **Adding a multi-word field without a `mapstructure` tag and using snake_case YAML.** This is the #1 footgun: the field silently binds to zero. `SessionTTL` + `session_ttl:` → `0`, not `24h`.
 - **Adding `BindEnv` for env vars that already follow the auto pattern.** Redundant and obscures which bindings are actually needed.
 - **Hiding misconfiguration with code defaults.** A `if cfg.X == 0 { cfg.X = default }` masks the real bug (the YAML key didn't bind). Fix the binding instead.
+- **Expecting an unindexed env var to replace a whole list.** `CLIENTS=...` does nothing; slice overrides must be indexed (`CLIENTS_0_NAME`).
 - **Assuming case-insensitive means snake-aware.** It doesn't — `caseInsensitiveLookup` only normalizes letter case, not separators.
 - **Forgetting that `time.Duration` is `int64`.** A missing duration looks like `0s`, which most code treats as "no timeout" or "expired" — almost always wrong.
