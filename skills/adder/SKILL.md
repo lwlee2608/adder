@@ -94,7 +94,7 @@ Adder reads YAML into Go structs and overlays env vars. It does **case-insensiti
    PATHS_0=/one            → paths[0], no yaml entry needed
    ```
 
-   Prefer `${VAR}` placeholders in `application.yml` when the list's shape is fixed and only secrets vary — the yaml still documents the shape. Reach for indexed env vars when the number of elements varies per environment.
+   For secrets inside a fixed-shape list, use `${NAME}` placeholders instead of `""` — the yaml still documents the shape, and named env vars survive list reordering where indexed ones don't. Use them only for string secrets: an unset var expands to empty, and there's no `${NAME:-default}` syntax. If the project has a `.env.example`, list the `${NAME}` vars there. Reach for indexed env vars when the number of elements varies per environment.
 
 7. **Co-locate config structs with the package they configure.** Each package owns its own config type (`internal/auth/config.go` → `auth.Config`, `internal/db/config.go` → `db.Config`). The cmd-level `Config` is just composition.
 
