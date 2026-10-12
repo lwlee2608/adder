@@ -43,7 +43,7 @@ Adder reads YAML into Go structs and overlays env vars. It does **case-insensiti
 
    **List every field, with local dev values.** `application.yml` is the config for running locally and the maintainer's bird's-eye view of all available config. Give every field a value that works for local dev (`localhost`, a docker-compose password, `10s`); env vars override them per deployment. Only secrets with no safe dev value (third-party API keys) get `""`. Never commit real credentials. If a non-string field truly has no default, use a bare key (`timeout:`), not `""` — `""` fails to parse for `time.Duration`.
 
-   Keep `application.yml` free of comments — with every field listed, per-field comments drown out the config. Explanations belong in `.env.example`.
+   Keep `application.yml` free of comments — with every field listed, per-field comments drown out the config.
 
    ```yaml
    auth:
@@ -55,7 +55,7 @@ Adder reads YAML into Go structs and overlays env vars. It does **case-insensiti
        from: dev@localhost
    ```
 
-   **Document deployment overrides in `.env.example`.** List the env vars a deployment needs to set — secrets and anything whose dev default is wrong in prod — with a comment explaining each. Use placeholder values only; adder doesn't load `.env` itself, so the project's runner (docker-compose, direnv, Makefile) must.
+   **If the code calls `godotenv.Overload()`, document overrides in `.env.example`.** List the env vars a deployment needs to set — secrets and anything whose dev default is wrong in prod — with a comment explaining each. Use placeholder values only. Without `godotenv.Overload()`, don't add `.env` files.
 
    ```sh
    # SMTP relay for outgoing auth emails
@@ -123,7 +123,7 @@ After adding or changing a config field (these checks apply at every nesting lev
 - **Adding `BindEnv` for env vars that already follow the auto pattern.** Redundant and obscures which bindings are actually needed.
 - **Omitting env-only fields from `application.yml`.** They still bind from env, but maintainers reading the yaml can't see they exist.
 - **Using prod values or `""` as defaults.** `application.yml` should run locally as-is; reserve `""` for secrets with no safe dev value.
-- **Commenting `application.yml`.** Keep it bare; put explanations next to the env vars in `.env.example`.
+- **Commenting `application.yml`.** Keep it bare; if the project uses `godotenv.Overload()`, put explanations next to the env vars in `.env.example`.
 - **Hiding misconfiguration with code defaults.** A `if cfg.X == 0 { cfg.X = default }` masks the real bug (the YAML key didn't bind). Fix the binding instead.
 - **Expecting an unindexed env var to replace a whole list.** `CLIENTS=...` does nothing; slice overrides must be indexed (`CLIENTS_0_NAME`).
 - **Assuming case-insensitive means snake-aware.** It doesn't — `caseInsensitiveLookup` only normalizes letter case, not separators.
