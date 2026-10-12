@@ -41,10 +41,29 @@ Adder reads YAML into Go structs and overlays env vars. It does **case-insensiti
 
 3. **Put defaults in `application.yml`, not in code.** `application.yml` is the canonical source of default values. Code should not paper over missing config with hard-coded fallbacks (e.g. `if cfg.SessionTTL == 0 { cfg.SessionTTL = 24*time.Hour }`) — that hides genuine misconfiguration. If a value is required, validate at startup and panic with a clear message.
 
+   **List every field, with local dev values.** `application.yml` is the config for running locally and the maintainer's bird's-eye view of all available config. Give every field a value that works for local dev (`localhost`, a docker-compose password, `10s`); env vars override them per deployment. Only secrets with no safe dev value (third-party API keys) get `""`. Never commit real credentials. If a non-string field truly has no default, use a bare key (`timeout:`), not `""` — `""` fails to parse for `time.Duration`.
+
+   Keep `application.yml` free of comments — with every field listed, per-field comments drown out the config.
+
    ```yaml
-   # application.yml — defaults live here
    auth:
      sessionTtl: 24h
+     smtp:
+       host: localhost
+       port: 1025
+       password: ""
+       from: dev@localhost
+   ```
+
+   **If the code calls `godotenv.Overload()`, document overrides in `.env.example`.** List the env vars a deployment needs to set — secrets and anything whose dev default is wrong in prod — with a comment explaining each. Use placeholder values only. Without `godotenv.Overload()`, don't add `.env` files.
+
+   ```sh
+   # SMTP relay for outgoing auth emails
+   AUTH_SMTP_HOST=smtp.example.com
+   AUTH_SMTP_PORT=587
+   # App password from the mail provider, not the account password
+   AUTH_SMTP_PASSWORD=changeme
+   AUTH_SMTP_FROM=no-reply@example.com
    ```
 
 4. **Rely on `AutomaticEnv()` for the standard env var pattern.** A *keyPath* is the dotted path adder uses internally — struct field `Auth.SessionTtl` becomes keyPath `auth.sessionttl`. With `SetEnvKeyReplacer(strings.NewReplacer(".", "_"))` and `AutomaticEnv()`, adder derives the env var as `strings.ToUpper(keyPath)` with dots replaced by underscores. Don't add `BindEnv` calls for env vars that already follow this pattern — they're noise.
@@ -75,7 +94,7 @@ Adder reads YAML into Go structs and overlays env vars. It does **case-insensiti
    PATHS_0=/one            → paths[0], no yaml entry needed
    ```
 
-   Prefer `${VAR}` placeholders in `application.yml` when the list's shape is fixed and only secrets vary — the yaml still documents the shape. Reach for indexed env vars when the number of elements varies per environment.
+   For secrets inside a fixed-shape list, use `${NAME}` placeholders instead of `""` — the yaml still documents the shape, and named env vars survive list reordering where indexed ones don't. Use them only for string secrets: an unset var expands to empty, and there's no `${NAME:-default}` syntax. If the project has a `.env.example`, list the `${NAME}` vars there. Reach for indexed env vars when the number of elements varies per environment.
 
 7. **Co-locate config structs with the package they configure.** Each package owns its own config type (`internal/auth/config.go` → `auth.Config`, `internal/db/config.go` → `db.Config`). The cmd-level `Config` is just composition.
 
@@ -94,7 +113,7 @@ Adder reads YAML into Go structs and overlays env vars. It does **case-insensiti
 After adding or changing a config field (these checks apply at every nesting level — verify the deepest field, not just the top-level struct):
 
 1. **Lowercase-match check** — does `strings.ToLower(fieldName)` equal the YAML key exactly? If not, you need a `mapstructure` tag, or you should rename the YAML key.
-2. **Default check** — is the default value in `application.yml`? Run the binary with no env overrides and confirm the field has the expected value. Don't rely on memory — log it, e.g. `log.Printf("%+v", cfg)`.
+2. **Default check** — does the field have a key in `application.yml` with a working local dev value? Run the binary with no env overrides and confirm the field has the expected value. Don't rely on memory — log it, e.g. `log.Printf("%+v", cfg)`.
 3. **Env override check** — if the field is meant to be env-overridable, set the auto-derived env var (`UPPER_CASE_WITH_UNDERSCORES`) and confirm it overrides the YAML default. Same rule: log the loaded value, don't assume.
 4. **Zero-value trap** — for `time.Duration`, `int`, `float64`, or `bool` fields, a binding miss looks identical to "configured as 0/false". Always test a non-zero default actually loads.
 
@@ -102,6 +121,9 @@ After adding or changing a config field (these checks apply at every nesting lev
 
 - **Adding a multi-word field without a `mapstructure` tag and using snake_case YAML.** This is the #1 footgun: the field silently binds to zero. `SessionTTL` + `session_ttl:` → `0`, not `24h`.
 - **Adding `BindEnv` for env vars that already follow the auto pattern.** Redundant and obscures which bindings are actually needed.
+- **Omitting env-only fields from `application.yml`.** They still bind from env, but maintainers reading the yaml can't see they exist.
+- **Using prod values or `""` as defaults.** `application.yml` should run locally as-is; reserve `""` for secrets with no safe dev value.
+- **Commenting `application.yml`.** Keep it bare; if the project uses `godotenv.Overload()`, put explanations next to the env vars in `.env.example`.
 - **Hiding misconfiguration with code defaults.** A `if cfg.X == 0 { cfg.X = default }` masks the real bug (the YAML key didn't bind). Fix the binding instead.
 - **Expecting an unindexed env var to replace a whole list.** `CLIENTS=...` does nothing; slice overrides must be indexed (`CLIENTS_0_NAME`).
 - **Assuming case-insensitive means snake-aware.** It doesn't — `caseInsensitiveLookup` only normalizes letter case, not separators.
